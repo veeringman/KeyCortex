@@ -7,9 +7,9 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use kc_api_types::{
     AuthBindRequest, AuthBindResponse, AuthChallengeResponse, AuthVerifyRequest, AuthVerifyResponse,
-    WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
+    SignPurpose, WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
 };
-use kc_auth_adapter::{challenge_response, issue_challenge, verify_signature_placeholder};
+use kc_auth_adapter::{challenge_response, issue_challenge};
 use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
@@ -230,6 +230,18 @@ async fn auth_verify(
     State(state): State<AppState>,
     Json(request): Json<AuthVerifyRequest>,
 ) -> ApiResult<AuthVerifyResponse> {
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
+    if request.challenge.trim().is_empty() {
+        return Err(bad_request("challenge is required"));
+    }
+
+    if request.signature.trim().is_empty() {
+        return Err(bad_request("signature is required"));
+    }
+
     let now = epoch_ms().map_err(internal_error)?;
 
     {
@@ -247,25 +259,39 @@ async fn auth_verify(
             record.used_at_epoch_ms = Some(now);
             return Err(bad_request("challenge expired"));
         }
+
+        record.used = true;
+        record.used_at_epoch_ms = Some(now);
     }
 
-    let response = verify_signature_placeholder(
-        &request.wallet_address,
-        &request.challenge,
-        &request.signature,
-    )
-    .map_err(internal_error)?;
+    let encrypted_key = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| bad_request("wallet not found"))?;
 
-    if response.valid {
-        let mut store = state.challenge_store.write().await;
-        if let Some(record) = store.get_mut(&request.challenge) {
-            let _challenge_age_ms = now.saturating_sub(record.issued_at_epoch_ms);
-            record.used = true;
-            record.used_at_epoch_ms = Some(now);
-        }
+    let secret_key = decrypt_key_material(&encrypted_key, state.encryption_key.as_ref())
+        .map_err(internal_error)?;
+
+    let signer = Ed25519Signer::from_secret_key_bytes(secret_key);
+    let derived_wallet_address = signer.wallet_address();
+    if derived_wallet_address != request.wallet_address {
+        return Err(bad_request("wallet address does not match custodied key"));
     }
 
-    Ok(Json(response))
+    let signature_bytes = from_hex(&request.signature)
+        .map_err(|_| bad_request("signature must be valid hex"))?;
+
+    let valid = signer
+        .verify(request.challenge.as_bytes(), SignPurpose::Auth, &signature_bytes)
+        .map_err(internal_error)?;
+
+    Ok(Json(AuthVerifyResponse {
+        valid,
+        wallet_address: request.wallet_address,
+        verified_at_epoch_ms: now,
+    }))
 }
 
 async fn auth_bind(headers: HeaderMap, Json(request): Json<AuthBindRequest>) -> ApiResult<AuthBindResponse> {
@@ -339,4 +365,21 @@ fn to_hex(input: &[u8]) -> String {
         output.push_str(&format!("{byte:02x}"));
     }
     output
+}
+
+fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
+    if input.len() % 2 != 0 {
+        anyhow::bail!("hex input length must be even");
+    }
+
+    let mut output = Vec::with_capacity(input.len() / 2);
+    let bytes = input.as_bytes();
+    let mut idx = 0;
+    while idx < bytes.len() {
+        let pair = std::str::from_utf8(&bytes[idx..idx + 2])?;
+        let value = u8::from_str_radix(pair, 16)?;
+        output.push(value);
+        idx += 2;
+    }
+    Ok(output)
 }

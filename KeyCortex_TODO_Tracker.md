@@ -139,12 +139,13 @@ Phase: Foundation & Architecture
 - [x] Add per-wallet encrypted key custody for create/sign flow
 - [x] Replace in-memory keystore with RocksDB-backed persistence
 - [x] Add auth challenge TTL + one-time-use enforcement
+- [x] Implement real cryptographic auth signature verification
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
-- [ ] Implement production-grade signature verification in `/auth/verify`
 - [ ] Implement IdP-backed `/auth/bind` persistence and audit logging
+- [ ] Add Postgres-backed audit logs for challenge/verify/bind events
 
 ### Blockers
 
@@ -165,6 +166,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Migrated MVP chain references from `flowcortex-l0` to `flowcortex-l1` across code, config, and docs; added FlowCortex-facing L1 change request parameter document.
 - 2026-02-25: Replaced in-memory keystore with RocksDB-backed persistence and added `KEYCORTEX_KEYSTORE_PATH` runtime path configuration.
 - 2026-02-25: Added challenge store lifecycle controls (`issued`, `used`, `expired`) with TTL and one-time-use enforcement for `/auth/challenge` and `/auth/verify`.
+- 2026-02-25: Replaced placeholder `/auth/verify` logic with real Ed25519 verification against wallet-custodied keys and auth-domain payload verification.
 
 ---
 

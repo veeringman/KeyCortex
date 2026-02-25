@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use ed25519_dalek::{Signature, Signer as DalekSigner, SigningKey};
+use ed25519_dalek::{Signature, Signer as DalekSigner, SigningKey, Verifier};
 use kc_api_types::SignPurpose;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
@@ -41,6 +41,25 @@ impl Ed25519Signer {
             signing_key: SigningKey::from_bytes(&secret_key),
         }
     }
+
+    pub fn verify(&self, payload: &[u8], purpose: SignPurpose, signature: &[u8]) -> Result<bool> {
+        if payload.is_empty() {
+            return Err(anyhow!("payload cannot be empty"));
+        }
+
+        if signature.len() != 64 {
+            return Err(anyhow!("invalid ed25519 signature length"));
+        }
+
+        let signing_input = signing_input(payload, purpose);
+        let signature = Signature::from_slice(signature);
+
+        Ok(self
+            .signing_key
+            .verifying_key()
+            .verify(&signing_input, &signature)
+            .is_ok())
+    }
 }
 
 impl Signer for Ed25519Signer {
@@ -49,21 +68,26 @@ impl Signer for Ed25519Signer {
             return Err(anyhow!("payload cannot be empty"));
         }
 
-        let purpose_tag = match purpose {
-            SignPurpose::Transaction => "transaction",
-            SignPurpose::Auth => "auth",
-            SignPurpose::Proof => "proof",
-        };
-
-        let mut signing_input = Vec::with_capacity(32 + payload.len());
-        signing_input.extend_from_slice(b"keycortex:v1:");
-        signing_input.extend_from_slice(purpose_tag.as_bytes());
-        signing_input.extend_from_slice(b":");
-        signing_input.extend_from_slice(payload);
+        let signing_input = signing_input(payload, purpose);
 
         let signature: Signature = self.signing_key.sign(&signing_input);
         Ok(signature.to_bytes().to_vec())
     }
+}
+
+fn signing_input(payload: &[u8], purpose: SignPurpose) -> Vec<u8> {
+    let purpose_tag = match purpose {
+        SignPurpose::Transaction => "transaction",
+        SignPurpose::Auth => "auth",
+        SignPurpose::Proof => "proof",
+    };
+
+    let mut signing_input = Vec::with_capacity(32 + payload.len());
+    signing_input.extend_from_slice(b"keycortex:v1:");
+    signing_input.extend_from_slice(purpose_tag.as_bytes());
+    signing_input.extend_from_slice(b":");
+    signing_input.extend_from_slice(payload);
+    signing_input
 }
 
 fn to_hex(input: &[u8]) -> String {

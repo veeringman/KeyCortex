@@ -3,4 +3,4 @@
 # KeyCortex
 A Secure Rust based digital wallet and cryptographic signing engine that binds enterprise identies to blockchain keys and executes policy-approved transactions.
 
-KeyCortex is designed with an extensible multi-chain architecture, while the initial implementation supports only FlowCortex with PROOF (native coin) and FloweR (native stablecoin).
+KeyCortex is designed with an extensible multi-chain architecture, while the initial implementation supports only FlowCortex L1 (`flowcortex-l1`) with PROOF (native coin) and FloweR (native stablecoin).

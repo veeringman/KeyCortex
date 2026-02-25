@@ -31,7 +31,7 @@ Phase: Foundation & Architecture
 - [x] Capture Digital Wallet + Wallet Auth Adapter detailed specification
 - [x] Decide cross-platform Rust-first tech stack (desktop/web/mobile)
 - [x] Define multi-chain extensible approach with FlowCortex-first MVP
-- [x] Define MVP transaction scope to `flowcortex-l0` + assets `PROOF` and `FloweR`
+- [x] Define MVP transaction scope to `flowcortex-l1` + assets `PROOF` and `FloweR`
 - [x] Finalize repository-wide folder structure for Rust workspace
 - [ ] Freeze v0.1 API contracts for wallet/auth endpoints
 
@@ -73,7 +73,7 @@ Phase: Foundation & Architecture
 - [ ] Implement `GET /wallet/balance` via FlowCortex
 - [ ] Implement transaction submit path via FlowCortex
 - [ ] Enforce runtime allowlist:
-  - [ ] chain = `flowcortex-l0`
+  - [ ] chain = `flowcortex-l1`
   - [ ] assets = `PROOF`, `FloweR`
 
 ### F) API & Data Layer
@@ -160,6 +160,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added wallet/auth API skeleton endpoints (`/wallet/create`, `/wallet/sign`, `/wallet/balance`, `/auth/challenge`, `/auth/verify`, `/auth/bind`) with MVP FlowCortex + PROOF/FloweR guardrails.
 - 2026-02-25: Implemented real Ed25519 signing path (`kc-crypto::Ed25519Signer`) and wired `/wallet/sign` to sign decoded base64 payloads with purpose-domain separation.
 - 2026-02-25: Added per-wallet encrypted key custody in `wallet-service`; `/wallet/create` stores encrypted private key material and `/wallet/sign` requires `wallet_address` to sign with that wallet key.
+- 2026-02-25: Migrated MVP chain references from `flowcortex-l0` to `flowcortex-l1` across code, config, and docs; added FlowCortex-facing L1 change request parameter document.
 
 ---
 
@@ -178,6 +179,6 @@ Phase: Foundation & Architecture
 1. Open this tracker first.
 2. Resume from `In Progress`; if empty, start from first item under `Next Up`.
 3. Validate scope constraints before coding:
-   - MVP chain: `flowcortex-l0`
+  - MVP chain: `flowcortex-l1`
    - MVP assets: `PROOF`, `FloweR`
 4. Continue updating this file at end of each work block.

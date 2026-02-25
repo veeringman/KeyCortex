@@ -50,7 +50,7 @@ Treasury Settlement UI
         │
         ├── ProofCortex (ZKP proofs)
         ▼
- FlowCortex L0 (anchor chain + token ledger)
+ FlowCortex L1 (anchor chain + token ledger)
 ```
 
 ---
@@ -128,7 +128,7 @@ Wallet prepares:
   "to": "counterparty_address",
   "amount": "1000",
   "asset": "FloweR",
-  "chain": "flowcortex-l0"
+  "chain": "flowcortex-l1"
 }
 ```
 
@@ -140,7 +140,7 @@ Steps:
 
 MVP transaction constraint:
 
-- Allowed chain: `flowcortex-l0`
+- Allowed chain: `flowcortex-l1`
 - Allowed assets: `PROOF`, `FloweR`
 - Any other chain or asset returns validation error until corresponding chain adapter is enabled.
 
@@ -172,7 +172,7 @@ Response:
 {
   "wallet_address": "0xABC123...",
   "public_key": "...",
-  "chain": "flowcortex-l0"
+  "chain": "flowcortex-l1"
 }
 ```
 
@@ -192,7 +192,7 @@ Request:
 
 Validation notes:
 
-- For `purpose=transaction`, payload must resolve to chain `flowcortex-l0` and asset `PROOF` or `FloweR` in MVP.
+- For `purpose=transaction`, payload must resolve to chain `flowcortex-l1` and asset `PROOF` or `FloweR` in MVP.
 
 #### `GET /wallet/balance`
 

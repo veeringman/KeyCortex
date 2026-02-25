@@ -6,8 +6,8 @@
     "coin": "ui/assets/icons/common/coin-default.svg"
   },
   "networks": {
-    "flowcortex-l0": {
-      "label": "FlowCortex L0",
+    "flowcortex-l1": {
+      "label": "FlowCortex L1",
       "icon": "ui/assets/icons/networks/flowcortex.svg"
     },
     "bitcoin": {
@@ -50,7 +50,7 @@
     }
   },
   "mvp_constraints": {
-    "active_chain": "flowcortex-l0",
+    "active_chain": "flowcortex-l1",
     "active_assets": ["PROOF", "FloweR"]
   }
 }

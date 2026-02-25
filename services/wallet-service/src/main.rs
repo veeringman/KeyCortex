@@ -12,7 +12,7 @@ use kc_api_types::{
 use kc_auth_adapter::{challenge_response, issue_challenge, verify_signature_placeholder};
 use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
-use kc_chain_flowcortex::{FLOWCORTEX_L0, FlowCortexAdapter};
+use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
 use kc_storage::{InMemoryKeystore, Keystore};
 use serde::{Deserialize, Serialize};
@@ -115,7 +115,7 @@ async fn wallet_create(State(state): State<AppState>) -> ApiResult<WalletCreateR
     Ok(Json(WalletCreateResponse {
         wallet_address,
         public_key,
-        chain: FLOWCORTEX_L0.to_owned(),
+        chain: FLOWCORTEX_L1.to_owned(),
     }))
 }
 
@@ -160,9 +160,9 @@ async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<Wa
         return Err(bad_request("wallet_address is required"));
     }
 
-    let chain = query.chain.unwrap_or_else(|| FLOWCORTEX_L0.to_owned());
-    if chain != FLOWCORTEX_L0 {
-        return Err(bad_request("unsupported chain for MVP; only flowcortex-l0 is enabled"));
+    let chain = query.chain.unwrap_or_else(|| FLOWCORTEX_L1.to_owned());
+    if chain != FLOWCORTEX_L1 {
+        return Err(bad_request("unsupported chain for MVP; only flowcortex-l1 is enabled"));
     }
 
     let asset = query.asset.unwrap_or_else(|| "PROOF".to_owned());
@@ -214,8 +214,8 @@ async fn auth_bind(headers: HeaderMap, Json(request): Json<AuthBindRequest>) -> 
         return Err(bad_request("wallet_address is required"));
     }
 
-    if request.chain != FLOWCORTEX_L0 {
-        return Err(bad_request("unsupported chain for MVP; only flowcortex-l0 is enabled"));
+    if request.chain != FLOWCORTEX_L1 {
+        return Err(bad_request("unsupported chain for MVP; only flowcortex-l1 is enabled"));
     }
 
     let user_id = auth_header.trim_start_matches("Bearer ").trim();

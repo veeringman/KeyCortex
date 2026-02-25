@@ -44,7 +44,7 @@ No UI business logic should hardcode icon paths outside the manifest.
 
 ## MVP Constraints Reference
 
-- Active chain: `flowcortex-l0`
+- Active chain: `flowcortex-l1`
 - Active assets: `PROOF`, `FloweR`
 
 Other network/coin placeholders are pre-created for future expansion.

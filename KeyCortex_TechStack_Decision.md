@@ -41,7 +41,7 @@ This keeps signing/auth logic in one audited Rust codebase while UIs are platfor
 - Start with `kc-chain-flowcortex` as the only enabled adapter.
 - Keep adapter registration config-driven so additional networks can be added without changing wallet domain logic.
 - Enforce MVP allowlist at runtime:
-  - chain = `flowcortex-l0`
+  - chain = `flowcortex-l1`
   - assets = `PROOF`, `FloweR`
 
 ---
@@ -121,7 +121,7 @@ This keeps signing/auth logic in one audited Rust codebase while UIs are platfor
 
 1. Build `wallet-service` (Axum REST + challenge/verify + sign tx + balance query).
 2. Implement encrypted keystore in `kc-storage`.
-3. Integrate only `flowcortex-l0` for transaction execution in MVP.
+3. Integrate only `flowcortex-l1` for transaction execution in MVP.
 4. Restrict transactable assets to `PROOF` and `FloweR` in MVP.
 5. Ship desktop first with Tauri (fastest real wallet UX).
 6. Ship web app against same backend APIs.

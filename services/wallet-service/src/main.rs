@@ -208,7 +208,7 @@ pub(crate) struct AppState {
     pub(crate) keystore: Arc<RocksDbKeystore>,
     pub(crate) postgres_repo: Option<Arc<db::PostgresRepository>>,
     pub(crate) db_fallback_counters: Arc<DbFallbackCounters>,
-    postgres_startup: Arc<StdRwLock<PostgresStartupReport>>,
+    postgres_startup: Arc<StdRwLock<PostgresStartupReport>,
     pub(crate) encryption_key: Arc<str>,
     pub(crate) authbuddy_jwt_secret: Arc<str>,
     pub(crate) authbuddy_jwks: Arc<StdRwLock<Option<JwkSet>>>,
@@ -218,6 +218,7 @@ pub(crate) struct AppState {
     pub(crate) challenge_store: Arc<TokioRwLock<HashMap<String, ChallengeRecord>>>,
     pub(crate) submit_idempotency_cache: Arc<TokioRwLock<HashMap<String, WalletSubmitResponse>>>,
     pub(crate) submit_nonce_state: Arc<TokioRwLock<HashMap<String, u64>>>,
+    pub(crate) authbuddy_callback: Option<Box<dyn crate::auth::AuthBuddyCallback + Send + Sync>>,
 }
 
 #[tokio::main]
@@ -324,6 +325,8 @@ async fn main() -> anyhow::Result<()> {
         last_error: None,
     };
 
+    let authbuddy_callback_url = env::var("AUTHBUDDY_CALLBACK_URL").ok();
+    let authbuddy_callback = authbuddy_callback_url.map(|url| Box::new(crate::auth::DefaultAuthBuddyCallback { url: Some(url) }) as Box<dyn crate::auth::AuthBuddyCallback + Send + Sync>);
     let state = AppState {
         keystore: Arc::new(keystore),
         postgres_repo,
@@ -347,6 +350,7 @@ async fn main() -> anyhow::Result<()> {
         challenge_store: Arc::new(TokioRwLock::new(HashMap::new())),
         submit_idempotency_cache: Arc::new(TokioRwLock::new(HashMap::new())),
         submit_nonce_state: Arc::new(TokioRwLock::new(HashMap::new())),
+        authbuddy_callback,
     };
 
     if authbuddy_jwks_url.is_some() || authbuddy_jwks_path.is_some() {

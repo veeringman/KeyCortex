@@ -1,3 +1,42 @@
+use reqwest::Client;
+use serde::Serialize;
+#[derive(Debug, Serialize, Clone)]
+pub struct AuthBuddyBindCallback {
+    pub user_id: String,
+    pub wallet_address: String,
+    pub chain: String,
+    pub bound_at_epoch_ms: u128,
+}
+
+pub trait AuthBuddyCallback: Send + Sync {
+    fn callback_url(&self) -> Option<&str>;
+    fn notify_bind(&self, payload: &AuthBuddyBindCallback);
+}
+
+pub struct DefaultAuthBuddyCallback {
+    pub url: Option<String>,
+}
+
+impl AuthBuddyCallback for DefaultAuthBuddyCallback {
+    fn callback_url(&self) -> Option<&str> {
+        self.url.as_deref()
+    }
+    fn notify_bind(&self, payload: &AuthBuddyBindCallback) {
+        if let Some(url) = &self.url {
+            let client = Client::new();
+            let payload = payload.clone();
+            tokio::spawn(async move {
+                let res = client.post(url)
+                    .json(&payload)
+                    .send()
+                    .await;
+                if let Err(err) = res {
+                    tracing::warn!("AuthBuddy callback failed: {}", err);
+                }
+            });
+        }
+    }
+}
 use axum::{
     Json,
     extract::State,
@@ -147,6 +186,16 @@ pub(crate) async fn auth_verify(
 }
 
 pub(crate) async fn auth_bind(
+        // Notify AuthBuddy callback if configured
+        if let Some(callback) = &state.authbuddy_callback {
+            let payload = AuthBuddyBindCallback {
+                user_id: user_id.clone(),
+                wallet_address: request.wallet_address.clone(),
+                chain: request.chain.clone(),
+                bound_at_epoch_ms: now,
+            };
+            callback.notify_bind(&payload);
+        }
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<AuthBindRequest>,

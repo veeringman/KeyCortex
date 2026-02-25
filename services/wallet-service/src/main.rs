@@ -23,10 +23,10 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
-use tracing::info;
+use tokio::sync::RwLock as TokioRwLock;
+use tracing::{info, warn};
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {
@@ -96,10 +96,10 @@ struct AppState {
     keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
     authbuddy_jwt_secret: Arc<str>,
-    authbuddy_jwks: Option<Arc<JwkSet>>,
+    authbuddy_jwks: Arc<StdRwLock<Option<JwkSet>>>,
     authbuddy_expected_issuer: Option<Arc<str>>,
     authbuddy_expected_audience: Option<Arc<str>>,
-    challenge_store: Arc<RwLock<HashMap<String, ChallengeRecord>>>,
+    challenge_store: Arc<TokioRwLock<HashMap<String, ChallengeRecord>>>,
 }
 
 #[tokio::main]
@@ -116,6 +116,20 @@ async fn main() -> anyhow::Result<()> {
 
     let keystore = RocksDbKeystore::open_default(&keystore_path)?;
 
+    let authbuddy_jwks_path = env::var("AUTHBUDDY_JWKS_PATH")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let authbuddy_jwks_refresh_seconds = env::var("AUTHBUDDY_JWKS_REFRESH_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(60)
+        .max(10);
+
+    let initial_jwks = env::var("AUTHBUDDY_JWKS_JSON")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .and_then(|json| serde_json::from_str::<JwkSet>(&json).ok());
+
     let state = AppState {
         keystore: Arc::new(keystore),
         encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
@@ -123,11 +137,7 @@ async fn main() -> anyhow::Result<()> {
             env::var("AUTHBUDDY_JWT_SECRET")
                 .unwrap_or_else(|_| "authbuddy-dev-secret-change-me".to_owned()),
         ),
-        authbuddy_jwks: env::var("AUTHBUDDY_JWKS_JSON")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .and_then(|json| serde_json::from_str::<JwkSet>(&json).ok())
-            .map(Arc::new),
+        authbuddy_jwks: Arc::new(StdRwLock::new(initial_jwks)),
         authbuddy_expected_issuer: env::var("AUTHBUDDY_JWT_ISSUER")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -136,8 +146,34 @@ async fn main() -> anyhow::Result<()> {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .map(Arc::<str>::from),
-        challenge_store: Arc::new(RwLock::new(HashMap::new())),
+        challenge_store: Arc::new(TokioRwLock::new(HashMap::new())),
     };
+
+    if let Some(path) = authbuddy_jwks_path {
+        let jwks_cache = Arc::clone(&state.authbuddy_jwks);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(authbuddy_jwks_refresh_seconds));
+            loop {
+                interval.tick().await;
+                match fs::read_to_string(&path) {
+                    Ok(content) => match serde_json::from_str::<JwkSet>(&content) {
+                        Ok(parsed) => {
+                            if let Ok(mut guard) = jwks_cache.write() {
+                                *guard = Some(parsed);
+                                info!("reloaded AuthBuddy JWKS from {}", path);
+                            }
+                        }
+                        Err(err) => {
+                            warn!("failed to parse AuthBuddy JWKS file {}: {}", path, err);
+                        }
+                    },
+                    Err(err) => {
+                        warn!("failed to read AuthBuddy JWKS file {}: {}", path, err);
+                    }
+                }
+            }
+        });
+    }
 
     let app = Router::new()
         .route("/health", get(health))
@@ -670,7 +706,13 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
         return Err("missing bearer token".to_owned());
     }
 
-    let claims = if let Some(jwks) = &state.authbuddy_jwks {
+    let jwks_snapshot = state
+        .authbuddy_jwks
+        .read()
+        .ok()
+        .and_then(|guard| (*guard).clone());
+
+    let claims = if let Some(jwks) = jwks_snapshot.as_ref() {
         decode_authbuddy_rs256_claims(token, jwks)?
     } else {
         decode_authbuddy_hs256_claims(token, state.authbuddy_jwt_secret.as_ref())?

@@ -146,12 +146,13 @@ Phase: Foundation & Architecture
 - [x] Replace static auth parsing with AuthBuddy JWT validation
 - [x] Enforce AuthBuddy JWT `exp`/`iss`/`aud` claim checks
 - [x] Add AuthBuddy JWKS/RS256 verification mode with HS256 fallback
+- [x] Add periodic JWKS refresh and key rotation handling
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add periodic JWKS refresh and key rotation handling
+- [ ] Add HTTPS JWKS fetch + cache with retry/backoff
 
 ### Blockers
 
@@ -179,6 +180,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Integrated AuthBuddy JWT signature validation (HS256) for `/auth/bind` and `/ops/*` authorization, replacing raw bearer principal parsing.
 - 2026-02-25: Hardened AuthBuddy JWT validation by enforcing `exp` and optional `iss`/`aud` checks via `AUTHBUDDY_JWT_ISSUER` and `AUTHBUDDY_JWT_AUDIENCE`.
 - 2026-02-25: Added AuthBuddy RS256 verification using `AUTHBUDDY_JWKS_JSON` (kid-based JWK selection) with HS256 dev fallback when JWKS is not configured.
+- 2026-02-25: Added periodic JWKS refresh from `AUTHBUDDY_JWKS_PATH` with live cache replacement and key rotation support (`AUTHBUDDY_JWKS_REFRESH_SECONDS`).
 
 ---
 

@@ -1,9 +1,10 @@
 use axum::{
     Json, Router,
-    extract::Query,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use kc_api_types::{
     AuthBindRequest, AuthBindResponse, AuthChallengeResponse, AuthVerifyRequest, AuthVerifyResponse,
     WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
@@ -12,12 +13,12 @@ use kc_auth_adapter::{challenge_response, issue_challenge, verify_signature_plac
 use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L0, FlowCortexAdapter};
-use kc_crypto::{PlaceholderSigner, Signer};
+use kc_crypto::{Ed25519Signer, Signer};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
-use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {
@@ -45,11 +46,20 @@ struct WalletBalanceQuery {
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
+#[derive(Clone)]
+struct AppState {
+    signer: Arc<Ed25519Signer>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    let state = AppState {
+        signer: Arc::new(Ed25519Signer::new_random()),
+    };
 
     let app = Router::new()
         .route("/health", get(health))
@@ -59,7 +69,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/wallet/balance", get(wallet_balance))
         .route("/auth/challenge", post(auth_challenge))
         .route("/auth/verify", post(auth_verify))
-        .route("/auth/bind", post(auth_bind));
+        .route("/auth/bind", post(auth_bind))
+        .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     info!("wallet-service listening on {}", addr);
@@ -84,9 +95,9 @@ async fn version() -> Json<VersionResponse> {
     })
 }
 
-async fn wallet_create() -> Json<WalletCreateResponse> {
-    let wallet_address = format!("0x{}", Uuid::new_v4().simple());
-    let public_key = format!("pk_{}", Uuid::new_v4().simple());
+async fn wallet_create(State(state): State<AppState>) -> Json<WalletCreateResponse> {
+    let wallet_address = state.signer.wallet_address();
+    let public_key = state.signer.public_key_hex();
 
     Json(WalletCreateResponse {
         wallet_address,
@@ -95,14 +106,21 @@ async fn wallet_create() -> Json<WalletCreateResponse> {
     })
 }
 
-async fn wallet_sign(Json(request): Json<WalletSignRequest>) -> ApiResult<WalletSignResponse> {
+async fn wallet_sign(
+    State(state): State<AppState>,
+    Json(request): Json<WalletSignRequest>,
+) -> ApiResult<WalletSignResponse> {
     if request.payload.trim().is_empty() {
         return Err(bad_request("payload cannot be empty"));
     }
 
-    let signer = PlaceholderSigner;
-    let signature_bytes = signer
-        .sign(request.payload.as_bytes(), request.purpose)
+    let payload_bytes = STANDARD
+        .decode(request.payload.as_bytes())
+        .map_err(|_| bad_request("payload must be valid base64"))?;
+
+    let signature_bytes = state
+        .signer
+        .sign(&payload_bytes, request.purpose)
         .map_err(internal_error)?;
 
     Ok(Json(WalletSignResponse {

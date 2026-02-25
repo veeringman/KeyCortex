@@ -1,0 +1,28 @@
+{
+  "$schema": "https://keycortex.dev/schemas/wallet-ux.schema.json",
+  "description": "Standard wallet UI/UX template for cross-platform reproduction (web, mobile, desktop)",
+  "layout": {
+    "shape": "rounded-rectangle",
+    "folds": 3,
+    "foldLines": "between major sections, not overlapping controls",
+    "patternScale": "coarse, 18px",
+    "glassFields": true,
+    "flap": {
+      "button": "skin cycle",
+      "foldLine": "above button",
+      "fadeLine": "below button"
+    },
+    "sections": [
+      "header (logo, title, subtitle, skin select)",
+      "hero (network, assets)",
+      "tabs and panels (create, connect, balance, sign, history)"
+    ]
+  },
+  "themeFormat": "wallet-theme.template.json",
+  "themes": [
+    "classic",
+    "dark",
+    "black"
+  ],
+  "notes": "Fold lines use edge color, are slightly faded, and do not touch controls. Pattern, glass, and color tokens are reusable across platforms."
+}

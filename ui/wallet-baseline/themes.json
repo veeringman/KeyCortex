@@ -1,0 +1,32 @@
+{
+  "classic": {
+    "name": "Classic Leather",
+    "backgroundPattern": "assets/leather-pattern.svg",
+    "primary": "#b97a56",
+    "secondary": "#e6c7a1",
+    "edge": "#8b5c2a",
+    "glass": "rgba(255,255,255,0.18)",
+    "text": "#2d1a0b",
+    "accent": "#e6c7a1"
+  },
+  "dark": {
+    "name": "Dark Leather",
+    "backgroundPattern": "assets/leather-pattern-dark.svg",
+    "primary": "#3a2c23",
+    "secondary": "#6d5c4a",
+    "edge": "#5a3b23",
+    "glass": "rgba(40,40,40,0.22)",
+    "text": "#f5e9d6",
+    "accent": "#b97a56"
+  },
+  "black": {
+    "name": "Black Edition",
+    "backgroundPattern": "assets/leather-pattern-black.svg",
+    "primary": "#181818",
+    "secondary": "#232323",
+    "edge": "#181818",
+    "glass": "rgba(30,30,30,0.28)",
+    "text": "#e0e0e0",
+    "accent": "#b97a56"
+  }
+}

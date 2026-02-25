@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KeyCortex Wallet UI Baseline</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="wallet-window" role="application" aria-label="KeyCortex wallet window">
+      <div class="wallet-flap" aria-hidden="true">
+          <div class="fold-line" aria-hidden="true"></div>
+        <button
+          id="skinCycleBtn"
+          class="skin-cycle-btn"
+          type="button"
+          aria-label="Cycle wallet skin"
+          title="Switch wallet skin"
+        >
+          ◌
+        </button>
+        <div class="fold-fade" aria-hidden="true"></div>
+      </div>
+      <div class="app">
+      <header class="header">
+        <img
+          class="brand-logo"
+          src="../../keycortex_logo.png"
+          alt="KeyCortex logo"
+        />
+        <h1 class="wallet-title">Secure Digital wallet</h1>
+        <p class="subtitle">Secure signing + auth binding for FlowCortex L1</p>
+        <div class="runtime">
+          <label for="baseUrl">API Base URL</label>
+          <input id="baseUrl" value="http://127.0.0.1:8080" />
+          <label for="skinSelect">Wallet Skin</label>
+          <select id="skinSelect">
+            <option value="classic">Classic</option>
+            <option value="dark">Dark Brown</option>
+            <option value="black">Black</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="wallet-fold-line" aria-hidden="true"></div>
+
+      <div class="wallet-fold-line" aria-hidden="true"></div>
+
+      <section class="hero">
+        <div>
+          <strong>Network</strong>
+          <span>flowcortex-l1</span>
+        </div>
+        <div>
+          <strong>Assets</strong>
+          <span>PROOF · FloweR</span>
+        </div>
+      </section>
+
+      <div class="wallet-fold-line" aria-hidden="true"></div>
+
+      <div class="wallet-fold-line" aria-hidden="true"></div>
+
+      <nav class="tabs" aria-label="Wallet Screens">
+        <button data-tab="create" class="tab active">Create</button>
+        <button data-tab="connect" class="tab">Connect</button>
+        <button data-tab="balance" class="tab">Balance</button>
+        <button data-tab="sign" class="tab">Sign</button>
+        <button data-tab="history" class="tab">History</button>
+      </nav>
+
+      <section id="create" class="panel active">
+        <h2>Create Wallet</h2>
+        <button id="createWalletBtn" class="primary">Create Wallet</button>
+        <pre id="createResult" class="result"></pre>
+      </section>
+
+      <section id="connect" class="panel">
+        <h2>Connect Wallet (Bind)</h2>
+        <div class="row">
+          <label for="connectWalletAddress">Wallet Address</label>
+          <input id="connectWalletAddress" placeholder="0x..." />
+        </div>
+        <div class="row">
+          <label for="connectChain">Chain</label>
+          <input id="connectChain" value="flowcortex-l1" />
+        </div>
+        <div class="row">
+          <label for="connectToken">Bearer Token</label>
+          <input id="connectToken" placeholder="eyJ..." />
+        </div>
+        <button id="bindWalletBtn" class="primary">Bind Wallet</button>
+        <pre id="connectResult" class="result"></pre>
+      </section>
+
+      <section id="balance" class="panel">
+        <h2>Get Balance</h2>
+        <div class="row">
+          <label for="balanceWalletAddress">Wallet Address</label>
+          <input id="balanceWalletAddress" placeholder="0x..." />
+        </div>
+        <div class="row">
+          <label for="balanceChain">Chain</label>
+          <input id="balanceChain" value="flowcortex-l1" />
+        </div>
+        <div class="row visuals">
+          <img id="balanceNetworkIcon" alt="Network icon" />
+          <img id="balanceCoinIcon" alt="Asset icon" />
+        </div>
+        <div class="row">
+          <label for="balanceAsset">Asset</label>
+          <select id="balanceAsset">
+            <option value="PROOF">PROOF</option>
+            <option value="FloweR">FloweR</option>
+          </select>
+        </div>
+        <button id="balanceBtn" class="primary">Fetch Balance</button>
+        <pre id="balanceResult" class="result"></pre>
+      </section>
+
+      <section id="sign" class="panel">
+        <h2>Sign Payload</h2>
+        <div class="row">
+          <label for="signWalletAddress">Wallet Address</label>
+          <input id="signWalletAddress" placeholder="0x..." />
+        </div>
+        <div class="row">
+          <label for="signPurpose">Purpose</label>
+          <select id="signPurpose">
+            <option value="transaction">transaction</option>
+            <option value="auth">auth</option>
+            <option value="proof">proof</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="signPayload">Payload (plain text)</label>
+          <textarea id="signPayload" rows="5" placeholder="message to sign"></textarea>
+        </div>
+        <button id="signBtn" class="primary">Sign</button>
+        <pre id="signResult" class="result"></pre>
+      </section>
+
+      <section id="history" class="panel">
+        <h2>Transaction History (Lookup)</h2>
+        <div class="row">
+          <label for="txHash">Tx Hash</label>
+          <input id="txHash" placeholder="pending-integration" />
+        </div>
+        <button id="txStatusBtn" class="primary">Fetch Tx Status</button>
+        <pre id="historyResult" class="result"></pre>
+      </section>
+      </div>
+    </main>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://keycortex.dev/schemas/wallet-theme.schema.json",
+  "themeName": "${name}",
+  "backgroundPattern": "${backgroundPattern}",
+  "colors": {
+    "primary": "${primary}",
+    "secondary": "${secondary}",
+    "edge": "${edge}",
+    "glass": "${glass}",
+    "text": "${text}",
+    "accent": "${accent}"
+  },
+  "description": "Standard wallet theme template for cross-platform UI (web, mobile, desktop). Replace variables with actual values for each skin."
+}

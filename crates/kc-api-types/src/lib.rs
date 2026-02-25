@@ -36,6 +36,14 @@ pub struct WalletSignResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletBalanceResponse {
+    pub wallet_address: String,
+    pub chain: String,
+    pub asset: String,
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthChallengeResponse {
     pub challenge: String,
     pub expires_in: u64,
@@ -53,4 +61,19 @@ pub struct AuthVerifyResponse {
     pub valid: bool,
     pub wallet_address: String,
     pub verified_at_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthBindRequest {
+    pub wallet_address: String,
+    pub chain: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthBindResponse {
+    pub bound: bool,
+    pub user_id: String,
+    pub wallet_address: String,
+    pub chain: String,
+    pub bound_at_epoch_ms: u128,
 }

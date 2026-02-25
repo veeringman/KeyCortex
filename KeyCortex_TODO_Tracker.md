@@ -78,9 +78,9 @@ Phase: Foundation & Architecture
 
 ### F) API & Data Layer
 
-- [ ] Implement `POST /wallet/create`
-- [ ] Implement `POST /wallet/sign`
-- [ ] Define shared request/response DTOs
+- [x] Implement `POST /wallet/create` (skeleton)
+- [x] Implement `POST /wallet/sign` (skeleton)
+- [x] Define shared request/response DTOs (initial)
 - [ ] Add Postgres migrations for:
   - [ ] `wallet_bindings`
   - [ ] `challenge_store`
@@ -134,12 +134,13 @@ Phase: Foundation & Architecture
 - [x] Add placeholder network/coin icon pack and UI icon manifest
 - [x] Add shared icon resolver module for network/coin icon lookup
 - [x] Scaffold Rust workspace, shared crates, and wallet-service baseline
+- [x] Add initial wallet/auth API skeleton routes in Axum
 
 ### Next Up
 
-- [ ] Implement initial wallet/auth API skeleton in Axum
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Implement challenge issuance, verify, and bind endpoint contracts
+- [ ] Replace placeholder signer with real Ed25519 signing flow
 
 ### Blockers
 
@@ -154,6 +155,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added UI placeholder icons for major networks/coins and a centralized icon manifest with MVP FlowCortex + PROOF/FloweR constraints.
 - 2026-02-25: Added shared icon resolver module for consistent icon path resolution, fallback handling, and MVP allowlist checks.
 - 2026-02-25: Scaffolded Rust workspace with core crates, chain adapter interfaces, FlowCortex adapter baseline, and Axum wallet-service starter.
+- 2026-02-25: Added wallet/auth API skeleton endpoints (`/wallet/create`, `/wallet/sign`, `/wallet/balance`, `/auth/challenge`, `/auth/verify`, `/auth/bind`) with MVP FlowCortex + PROOF/FloweR guardrails.
 
 ---
 

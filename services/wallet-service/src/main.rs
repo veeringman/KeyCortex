@@ -14,8 +14,10 @@ use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
-use kc_storage::{InMemoryKeystore, Keystore};
+use kc_storage::{Keystore, RocksDbKeystore};
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -49,7 +51,7 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 #[derive(Clone)]
 struct AppState {
-    keystore: Arc<InMemoryKeystore>,
+    keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
 }
 
@@ -59,8 +61,16 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    let keystore_path = env::var("KEYCORTEX_KEYSTORE_PATH")
+        .unwrap_or_else(|_| "./data/keystore/rocksdb".to_owned());
+    if let Some(parent) = std::path::Path::new(&keystore_path).parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let keystore = RocksDbKeystore::open_default(&keystore_path)?;
+
     let state = AppState {
-        keystore: Arc::new(InMemoryKeystore::default()),
+        keystore: Arc::new(keystore),
         encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
     };
 

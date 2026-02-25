@@ -85,7 +85,7 @@ Phase: Foundation & Architecture
   - [ ] `wallet_bindings`
   - [ ] `challenge_store`
   - [ ] `verification_logs`
-- [ ] Add RocksDB keystore persistence
+- [x] Add RocksDB keystore persistence
 
 ### G) UI & Client Surfaces
 
@@ -137,12 +137,13 @@ Phase: Foundation & Architecture
 - [x] Add initial wallet/auth API skeleton routes in Axum
 - [x] Replace placeholder signing with real Ed25519 signing in wallet-service
 - [x] Add per-wallet encrypted key custody for create/sign flow
+- [x] Replace in-memory keystore with RocksDB-backed persistence
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Implement challenge issuance, verify, and bind endpoint contracts
-- [ ] Add persistent RocksDB keystore backend (replace in-memory MVP storage)
+- [ ] Add challenge persistence with TTL and one-time-use enforcement
 
 ### Blockers
 
@@ -161,6 +162,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Implemented real Ed25519 signing path (`kc-crypto::Ed25519Signer`) and wired `/wallet/sign` to sign decoded base64 payloads with purpose-domain separation.
 - 2026-02-25: Added per-wallet encrypted key custody in `wallet-service`; `/wallet/create` stores encrypted private key material and `/wallet/sign` requires `wallet_address` to sign with that wallet key.
 - 2026-02-25: Migrated MVP chain references from `flowcortex-l0` to `flowcortex-l1` across code, config, and docs; added FlowCortex-facing L1 change request parameter document.
+- 2026-02-25: Replaced in-memory keystore with RocksDB-backed persistence and added `KEYCORTEX_KEYSTORE_PATH` runtime path configuration.
 
 ---
 

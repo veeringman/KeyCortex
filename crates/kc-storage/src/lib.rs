@@ -1,6 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use rocksdb::{DB, Options};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[async_trait]
@@ -39,5 +41,37 @@ impl Keystore for InMemoryKeystore {
     async fn load_encrypted_key(&self, wallet_address: &str) -> Result<Option<Vec<u8>>> {
         let guard = self.keys.read().await;
         Ok(guard.get(wallet_address).cloned())
+    }
+}
+
+pub struct RocksDbKeystore {
+    db: Arc<DB>,
+}
+
+impl RocksDbKeystore {
+    pub fn open_default(path: &str) -> Result<Self> {
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        let db = DB::open(&options, path)?;
+        Ok(Self { db: Arc::new(db) })
+    }
+
+    fn key_for_wallet(wallet_address: &str) -> String {
+        format!("wallet-key:{wallet_address}")
+    }
+}
+
+#[async_trait]
+impl Keystore for RocksDbKeystore {
+    async fn save_encrypted_key(&self, wallet_address: &str, encrypted_key: Vec<u8>) -> Result<()> {
+        let key = Self::key_for_wallet(wallet_address);
+        self.db.put(key.as_bytes(), encrypted_key)?;
+        Ok(())
+    }
+
+    async fn load_encrypted_key(&self, wallet_address: &str) -> Result<Option<Vec<u8>>> {
+        let key = Self::key_for_wallet(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        Ok(value.map(|v| v.to_vec()))
     }
 }

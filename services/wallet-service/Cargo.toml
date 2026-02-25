@@ -19,3 +19,4 @@ kc-auth-adapter = { path = "../../crates/kc-auth-adapter" }
 kc-chain-client = { path = "../../crates/kc-chain-client" }
 kc-chain-flowcortex = { path = "../../crates/kc-chain-flowcortex" }
 kc-crypto = { path = "../../crates/kc-crypto" }
+kc-storage = { path = "../../crates/kc-storage" }

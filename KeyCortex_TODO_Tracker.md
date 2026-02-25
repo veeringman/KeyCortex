@@ -53,8 +53,8 @@ Phase: Foundation & Architecture
 
 - [x] Implement key generation for Ed25519
 - [ ] Add secp256k1 support path (feature-gated)
-- [ ] Implement encrypted private key storage interface
-- [ ] Enforce “private keys never leave service boundary”
+- [x] Implement encrypted private key storage interface (in-memory MVP)
+- [x] Enforce “private keys never leave service boundary” (service-side key use)
 - [x] Add purpose-tagged signing (`auth`, `transaction`, `proof`)
 - [ ] Add zeroization for sensitive memory
 
@@ -79,7 +79,7 @@ Phase: Foundation & Architecture
 ### F) API & Data Layer
 
 - [x] Implement `POST /wallet/create` (skeleton)
-- [x] Implement `POST /wallet/sign` (skeleton)
+- [x] Implement `POST /wallet/sign` (wallet-address scoped signing)
 - [x] Define shared request/response DTOs (initial)
 - [ ] Add Postgres migrations for:
   - [ ] `wallet_bindings`
@@ -136,12 +136,13 @@ Phase: Foundation & Architecture
 - [x] Scaffold Rust workspace, shared crates, and wallet-service baseline
 - [x] Add initial wallet/auth API skeleton routes in Axum
 - [x] Replace placeholder signing with real Ed25519 signing in wallet-service
+- [x] Add per-wallet encrypted key custody for create/sign flow
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Implement challenge issuance, verify, and bind endpoint contracts
-- [ ] Add keystore-backed per-wallet key custody for create/sign flow
+- [ ] Add persistent RocksDB keystore backend (replace in-memory MVP storage)
 
 ### Blockers
 
@@ -158,6 +159,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Scaffolded Rust workspace with core crates, chain adapter interfaces, FlowCortex adapter baseline, and Axum wallet-service starter.
 - 2026-02-25: Added wallet/auth API skeleton endpoints (`/wallet/create`, `/wallet/sign`, `/wallet/balance`, `/auth/challenge`, `/auth/verify`, `/auth/bind`) with MVP FlowCortex + PROOF/FloweR guardrails.
 - 2026-02-25: Implemented real Ed25519 signing path (`kc-crypto::Ed25519Signer`) and wired `/wallet/sign` to sign decoded base64 payloads with purpose-domain separation.
+- 2026-02-25: Added per-wallet encrypted key custody in `wallet-service`; `/wallet/create` stores encrypted private key material and `/wallet/sign` requires `wallet_address` to sign with that wallet key.
 
 ---
 

@@ -13,7 +13,8 @@ use kc_auth_adapter::{challenge_response, issue_challenge, verify_signature_plac
 use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L0, FlowCortexAdapter};
-use kc_crypto::{Ed25519Signer, Signer};
+use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
+use kc_storage::{InMemoryKeystore, Keystore};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -48,7 +49,8 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 #[derive(Clone)]
 struct AppState {
-    signer: Arc<Ed25519Signer>,
+    keystore: Arc<InMemoryKeystore>,
+    encryption_key: Arc<str>,
 }
 
 #[tokio::main]
@@ -58,7 +60,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let state = AppState {
-        signer: Arc::new(Ed25519Signer::new_random()),
+        keystore: Arc::new(InMemoryKeystore::default()),
+        encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
     };
 
     let app = Router::new()
@@ -95,21 +98,35 @@ async fn version() -> Json<VersionResponse> {
     })
 }
 
-async fn wallet_create(State(state): State<AppState>) -> Json<WalletCreateResponse> {
-    let wallet_address = state.signer.wallet_address();
-    let public_key = state.signer.public_key_hex();
+async fn wallet_create(State(state): State<AppState>) -> ApiResult<WalletCreateResponse> {
+    let signer = Ed25519Signer::new_random();
+    let wallet_address = signer.wallet_address();
+    let public_key = signer.public_key_hex();
 
-    Json(WalletCreateResponse {
+    let encrypted_key = encrypt_key_material(&signer.secret_key_bytes(), state.encryption_key.as_ref())
+        .map_err(internal_error)?;
+
+    state
+        .keystore
+        .save_encrypted_key(&wallet_address, encrypted_key)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(WalletCreateResponse {
         wallet_address,
         public_key,
         chain: FLOWCORTEX_L0.to_owned(),
-    })
+    }))
 }
 
 async fn wallet_sign(
     State(state): State<AppState>,
     Json(request): Json<WalletSignRequest>,
 ) -> ApiResult<WalletSignResponse> {
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
     if request.payload.trim().is_empty() {
         return Err(bad_request("payload cannot be empty"));
     }
@@ -118,8 +135,18 @@ async fn wallet_sign(
         .decode(request.payload.as_bytes())
         .map_err(|_| bad_request("payload must be valid base64"))?;
 
-    let signature_bytes = state
-        .signer
+    let encrypted_key = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| bad_request("wallet not found"))?;
+
+    let secret_key = decrypt_key_material(&encrypted_key, state.encryption_key.as_ref())
+        .map_err(internal_error)?;
+
+    let signer = Ed25519Signer::from_secret_key_bytes(secret_key);
+    let signature_bytes = signer
         .sign(&payload_bytes, request.purpose)
         .map_err(internal_error)?;
 

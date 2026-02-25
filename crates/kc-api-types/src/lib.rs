@@ -26,6 +26,7 @@ pub struct WalletCreateResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletSignRequest {
+    pub wallet_address: String,
     pub payload: String,
     pub purpose: SignPurpose,
 }

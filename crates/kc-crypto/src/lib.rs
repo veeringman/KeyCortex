@@ -31,6 +31,16 @@ impl Ed25519Signer {
         let digest = Sha256::digest(self.public_key_bytes());
         format!("0x{}", to_hex(&digest[..20]))
     }
+
+    pub fn secret_key_bytes(&self) -> [u8; 32] {
+        self.signing_key.to_bytes()
+    }
+
+    pub fn from_secret_key_bytes(secret_key: [u8; 32]) -> Self {
+        Self {
+            signing_key: SigningKey::from_bytes(&secret_key),
+        }
+    }
 }
 
 impl Signer for Ed25519Signer {
@@ -62,4 +72,55 @@ fn to_hex(input: &[u8]) -> String {
         output.push_str(&format!("{byte:02x}"));
     }
     output
+}
+
+pub fn encrypt_key_material(secret_key: &[u8; 32], encryption_key: &str) -> Result<Vec<u8>> {
+    if encryption_key.trim().is_empty() {
+        return Err(anyhow!("encryption key cannot be empty"));
+    }
+
+    let key_stream = derive_key_stream(encryption_key, secret_key.len());
+    let mut encrypted = Vec::with_capacity(secret_key.len());
+    for (index, byte) in secret_key.iter().enumerate() {
+        encrypted.push(byte ^ key_stream[index]);
+    }
+    Ok(encrypted)
+}
+
+pub fn decrypt_key_material(encrypted: &[u8], encryption_key: &str) -> Result<[u8; 32]> {
+    if encryption_key.trim().is_empty() {
+        return Err(anyhow!("encryption key cannot be empty"));
+    }
+
+    if encrypted.len() != 32 {
+        return Err(anyhow!("invalid encrypted key length"));
+    }
+
+    let key_stream = derive_key_stream(encryption_key, encrypted.len());
+    let mut decrypted = [0_u8; 32];
+
+    for (index, byte) in encrypted.iter().enumerate() {
+        decrypted[index] = byte ^ key_stream[index];
+    }
+
+    Ok(decrypted)
+}
+
+fn derive_key_stream(seed: &str, len: usize) -> Vec<u8> {
+    let mut stream = Vec::with_capacity(len);
+    let mut counter: u64 = 0;
+    while stream.len() < len {
+        let mut hasher = Sha256::new();
+        hasher.update(seed.as_bytes());
+        hasher.update(counter.to_le_bytes());
+        let block = hasher.finalize();
+        for byte in block {
+            if stream.len() == len {
+                break;
+            }
+            stream.push(byte);
+        }
+        counter += 1;
+    }
+    stream
 }

@@ -184,6 +184,7 @@ Request:
 
 ```json
 {
+  "wallet_address": "0xABC123...",
   "payload": "...base64...",
   "purpose": "transaction|auth|proof"
 }

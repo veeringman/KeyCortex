@@ -455,8 +455,16 @@ async fn auth_bind(
 
 async fn ops_get_binding(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(wallet_address): Path<String>,
 ) -> ApiResult<WalletBindingRecord> {
+    let _ops_user = require_ops_access(
+        &state,
+        &headers,
+        "ops_get_binding",
+        Some(wallet_address.as_str()),
+    )?;
+
     if wallet_address.trim().is_empty() {
         return Err(bad_request("wallet_address is required"));
     }
@@ -472,8 +480,16 @@ async fn ops_get_binding(
 
 async fn ops_list_audit(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<OpsAuditQuery>,
 ) -> ApiResult<OpsAuditResponse> {
+    let _ops_user = require_ops_access(
+        &state,
+        &headers,
+        "ops_list_audit",
+        query.wallet_address.as_deref(),
+    )?;
+
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
 
     let events = state
@@ -556,4 +572,90 @@ fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
 
 fn append_audit_event(state: &AppState, event: AuditEventRecord) {
     let _ = state.keystore.append_audit_event(event);
+}
+
+fn require_ops_access(
+    state: &AppState,
+    headers: &HeaderMap,
+    operation: &str,
+    wallet_address: Option<&str>,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let now = epoch_ms().unwrap_or_default();
+
+    let auth_header = match headers.get("authorization").and_then(|value| value.to_str().ok()) {
+        Some(value) if value.starts_with("Bearer ") => value,
+        _ => {
+            append_audit_event(
+                state,
+                AuditEventRecord {
+                    event_id: String::new(),
+                    event_type: "ops_access".to_owned(),
+                    wallet_address: wallet_address.map(ToOwned::to_owned),
+                    user_id: None,
+                    chain: Some(FLOWCORTEX_L1.to_owned()),
+                    outcome: "denied".to_owned(),
+                    message: Some(format!("{operation}: missing or invalid Authorization header")),
+                    timestamp_epoch_ms: now,
+                },
+            );
+            return Err(unauthorized("ops access denied"));
+        }
+    };
+
+    let user_id = auth_header.trim_start_matches("Bearer ").trim();
+    if user_id.is_empty() {
+        append_audit_event(
+            state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "ops_access".to_owned(),
+                wallet_address: wallet_address.map(ToOwned::to_owned),
+                user_id: None,
+                chain: Some(FLOWCORTEX_L1.to_owned()),
+                outcome: "denied".to_owned(),
+                message: Some(format!("{operation}: empty bearer principal")),
+                timestamp_epoch_ms: now,
+            },
+        );
+        return Err(unauthorized("ops access denied"));
+    }
+
+    let role_header = headers
+        .get("x-role")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+
+    let has_ops_role = role_header.split(',').any(|role| role.trim() == "ops-admin");
+    if !has_ops_role {
+        append_audit_event(
+            state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "ops_access".to_owned(),
+                wallet_address: wallet_address.map(ToOwned::to_owned),
+                user_id: Some(user_id.to_owned()),
+                chain: Some(FLOWCORTEX_L1.to_owned()),
+                outcome: "denied".to_owned(),
+                message: Some(format!("{operation}: missing ops-admin role in x-role header")),
+                timestamp_epoch_ms: now,
+            },
+        );
+        return Err(unauthorized("ops access denied"));
+    }
+
+    append_audit_event(
+        state,
+        AuditEventRecord {
+            event_id: String::new(),
+            event_type: "ops_access".to_owned(),
+            wallet_address: wallet_address.map(ToOwned::to_owned),
+            user_id: Some(user_id.to_owned()),
+            chain: Some(FLOWCORTEX_L1.to_owned()),
+            outcome: "success".to_owned(),
+            message: Some(format!("{operation}: access granted")),
+            timestamp_epoch_ms: now,
+        },
+    );
+
+    Ok(user_id.to_owned())
 }

@@ -142,12 +142,13 @@ Phase: Foundation & Architecture
 - [x] Implement real cryptographic auth signature verification
 - [x] Persist `/auth/bind` wallet bindings and audit events
 - [x] Add ops read endpoints for bindings and audit logs
+- [x] Add ops endpoint auth guard and role checks
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add ops endpoint auth guard and role-based access checks
+- [ ] Replace static/dummy auth parsing with AuthBuddy JWT validation
 
 ### Blockers
 
@@ -171,6 +172,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Replaced placeholder `/auth/verify` logic with real Ed25519 verification against wallet-custodied keys and auth-domain payload verification.
 - 2026-02-25: Added `/auth/bind` persistence and audit logging via RocksDB (`wallet_binding` + `audit` records) with success/denied event outcomes.
 - 2026-02-25: Added ops read endpoints for binding lookup and filtered audit log retrieval backed by RocksDB.
+- 2026-02-25: Added ops endpoint access guard requiring bearer principal + `x-role: ops-admin`, with success/denied access auditing.
 
 ---
 

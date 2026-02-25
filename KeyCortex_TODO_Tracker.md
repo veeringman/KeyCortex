@@ -90,6 +90,7 @@ Phase: Foundation & Architecture
 ### G) UI & Client Surfaces
 
 - [x] Add placeholder network and coin icons + centralized icon manifest
+- [x] Add shared icon resolver module with fallback + MVP checks
 - [ ] Desktop shell baseline (Tauri)
 - [ ] Web wallet baseline (Next.js)
 - [ ] Mobile bridge baseline (UniFFI generation)
@@ -131,6 +132,7 @@ Phase: Foundation & Architecture
 
 - [x] Prepare persistent TODO tracker and operating process
 - [x] Add placeholder network/coin icon pack and UI icon manifest
+- [x] Add shared icon resolver module for network/coin icon lookup
 
 ### Next Up
 
@@ -149,6 +151,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Created tracker with baseline scope, phases, and actionable breakdown.
 - 2026-02-25: Marked architecture/stack/spec decisions as completed based on existing docs.
 - 2026-02-25: Added UI placeholder icons for major networks/coins and a centralized icon manifest with MVP FlowCortex + PROOF/FloweR constraints.
+- 2026-02-25: Added shared icon resolver module for consistent icon path resolution, fallback handling, and MVP allowlist checks.
 
 ---
 

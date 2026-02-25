@@ -14,6 +14,21 @@ This folder contains shared UI placeholder assets for networks and coins.
 
 - Path: `ui/config/icon-manifest.json`
 
+## Shared Icon Resolver
+
+- Path: `ui/shared/icon-resolver.ts`
+- Example: `ui/shared/icon-resolver.example.ts`
+
+Use this module to resolve network/coin icons with fallback behavior and MVP constraint checks.
+
+Core functions:
+
+- `resolveNetworkIcon(manifest, chain)`
+- `resolveCoinIcon(manifest, asset)`
+- `resolveWalletVisuals(manifest, chain, asset)`
+- `isMvpChainAllowed(manifest, chain)`
+- `isMvpAssetAllowed(manifest, asset)`
+
 ## Placeholder Asset Folders
 
 - Networks: `ui/assets/icons/networks/`

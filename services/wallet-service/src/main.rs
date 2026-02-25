@@ -32,6 +32,11 @@ use tracing::{info, warn};
 struct HealthResponse {
     service: &'static str,
     status: &'static str,
+    auth_mode: String,
+    jwks_source: Option<String>,
+    jwks_loaded: bool,
+    last_jwks_refresh_epoch_ms: Option<u128>,
+    last_jwks_error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +86,14 @@ struct AuthPrincipal {
     roles: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct JwksRuntimeStatus {
+    source: Option<String>,
+    loaded: bool,
+    last_refresh_epoch_ms: Option<u128>,
+    last_error: Option<String>,
+}
+
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 #[derive(Debug, Clone)]
@@ -97,6 +110,7 @@ struct AppState {
     encryption_key: Arc<str>,
     authbuddy_jwt_secret: Arc<str>,
     authbuddy_jwks: Arc<StdRwLock<Option<JwkSet>>>,
+    jwks_status: Arc<StdRwLock<JwksRuntimeStatus>>,
     authbuddy_expected_issuer: Option<Arc<str>>,
     authbuddy_expected_audience: Option<Arc<str>>,
     challenge_store: Arc<TokioRwLock<HashMap<String, ChallengeRecord>>>,
@@ -133,6 +147,25 @@ async fn main() -> anyhow::Result<()> {
         .filter(|value| !value.trim().is_empty())
         .and_then(|json| serde_json::from_str::<JwkSet>(&json).ok());
 
+    let initial_jwks_source = if authbuddy_jwks_url.is_some() {
+        Some("url".to_owned())
+    } else if authbuddy_jwks_path.is_some() {
+        Some("file".to_owned())
+    } else if initial_jwks.is_some() {
+        Some("inline".to_owned())
+    } else {
+        None
+    };
+
+    let jwks_status = JwksRuntimeStatus {
+        source: initial_jwks_source,
+        loaded: initial_jwks.is_some(),
+        last_refresh_epoch_ms: initial_jwks
+            .as_ref()
+            .and_then(|_| epoch_ms().ok()),
+        last_error: None,
+    };
+
     let state = AppState {
         keystore: Arc::new(keystore),
         encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
@@ -141,6 +174,7 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| "authbuddy-dev-secret-change-me".to_owned()),
         ),
         authbuddy_jwks: Arc::new(StdRwLock::new(initial_jwks)),
+        jwks_status: Arc::new(StdRwLock::new(jwks_status)),
         authbuddy_expected_issuer: env::var("AUTHBUDDY_JWT_ISSUER")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -154,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
 
     if authbuddy_jwks_url.is_some() || authbuddy_jwks_path.is_some() {
         let jwks_cache = Arc::clone(&state.authbuddy_jwks);
+        let jwks_status = Arc::clone(&state.jwks_status);
         let jwks_url = authbuddy_jwks_url.clone();
         let jwks_path = authbuddy_jwks_path.clone();
         tokio::spawn(async move {
@@ -172,10 +207,18 @@ async fn main() -> anyhow::Result<()> {
                             if let Ok(mut guard) = jwks_cache.write() {
                                 *guard = Some(parsed);
                             }
+                            if let Ok(mut status) = jwks_status.write() {
+                                status.loaded = true;
+                                status.last_refresh_epoch_ms = epoch_ms().ok();
+                                status.last_error = None;
+                            }
                             info!("reloaded AuthBuddy JWKS from URL {}", url);
                             refreshed = true;
                         }
                         Err(err) => {
+                            if let Ok(mut status) = jwks_status.write() {
+                                status.last_error = Some(format!("url refresh failed: {err}"));
+                            }
                             warn!("failed to refresh AuthBuddy JWKS from URL {}: {}", url, err);
                         }
                     }
@@ -189,14 +232,25 @@ async fn main() -> anyhow::Result<()> {
                                     if let Ok(mut guard) = jwks_cache.write() {
                                         *guard = Some(parsed);
                                     }
+                                    if let Ok(mut status) = jwks_status.write() {
+                                        status.loaded = true;
+                                        status.last_refresh_epoch_ms = epoch_ms().ok();
+                                        status.last_error = None;
+                                    }
                                     info!("reloaded AuthBuddy JWKS from file {}", path);
                                     refreshed = true;
                                 }
                                 Err(err) => {
+                                    if let Ok(mut status) = jwks_status.write() {
+                                        status.last_error = Some(format!("file parse failed: {err}"));
+                                    }
                                     warn!("failed to parse AuthBuddy JWKS file {}: {}", path, err);
                                 }
                             },
                             Err(err) => {
+                                if let Ok(mut status) = jwks_status.write() {
+                                    status.last_error = Some(format!("file read failed: {err}"));
+                                }
                                 warn!("failed to read AuthBuddy JWKS file {}: {}", path, err);
                             }
                         }
@@ -239,10 +293,34 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health() -> Json<HealthResponse> {
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+    let status_snapshot = state
+        .jwks_status
+        .read()
+        .ok()
+        .map(|status| status.clone())
+        .unwrap_or(JwksRuntimeStatus {
+            source: None,
+            loaded: false,
+            last_refresh_epoch_ms: None,
+            last_error: Some("jwks status unavailable".to_owned()),
+        });
+
+    let auth_mode = if status_snapshot.loaded {
+        "rs256-jwks"
+    } else {
+        "hs256-fallback"
+    }
+    .to_owned();
+
     Json(HealthResponse {
         service: "wallet-service",
         status: "ok",
+        auth_mode,
+        jwks_source: status_snapshot.source,
+        jwks_loaded: status_snapshot.loaded,
+        last_jwks_refresh_epoch_ms: status_snapshot.last_refresh_epoch_ms,
+        last_jwks_error: status_snapshot.last_error,
     })
 }
 

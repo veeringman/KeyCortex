@@ -148,12 +148,13 @@ Phase: Foundation & Architecture
 - [x] Add AuthBuddy JWKS/RS256 verification mode with HS256 fallback
 - [x] Add periodic JWKS refresh and key rotation handling
 - [x] Add HTTPS JWKS fetch with retry/backoff cache refresh
+- [x] Add startup/health auth mode and JWKS status visibility
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add startup health signal for auth mode (HS256 vs RS256/JWKS)
+- [ ] Add `/readyz` endpoint with dependency checks (keystore + auth mode)
 
 ### Blockers
 
@@ -183,6 +184,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added AuthBuddy RS256 verification using `AUTHBUDDY_JWKS_JSON` (kid-based JWK selection) with HS256 dev fallback when JWKS is not configured.
 - 2026-02-25: Added periodic JWKS refresh from `AUTHBUDDY_JWKS_PATH` with live cache replacement and key rotation support (`AUTHBUDDY_JWKS_REFRESH_SECONDS`).
 - 2026-02-25: Added `AUTHBUDDY_JWKS_URL` fetch path with retry/backoff and file fallback for resilient JWKS cache refresh.
+- 2026-02-25: Extended `/health` to expose auth mode and JWKS runtime status (`source`, `loaded`, `last_refresh`, `last_error`).
 
 ---
 

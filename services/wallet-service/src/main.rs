@@ -844,7 +844,39 @@ fn build_app(state: AppState) -> Router {
         .route("/auth/bind", post(auth::auth_bind))
         .route("/ops/bindings/{wallet_address}", get(ops::ops_get_binding))
         .route("/ops/audit", get(ops::ops_list_audit))
+        .route("/fortressdigital/context", post(fortressdigital_payload))
         .with_state(state)
+mod fortressdigital;
+use fortressdigital::{FortressDigitalContextPayload, generate_context_payload};
+#[derive(Debug, Deserialize)]
+struct FortressDigitalPayloadRequest {
+    wallet_address: String,
+    user_id: String,
+    chain: String,
+    session_id: String,
+    context_data: String,
+    expires_in_seconds: Option<u64>,
+}
+
+async fn fortressdigital_payload(
+    State(state): State<AppState>,
+    Json(request): Json<FortressDigitalPayloadRequest>,
+) -> ApiResult<FortressDigitalContextPayload> {
+    let issued_at_epoch_ms = epoch_ms().unwrap_or_default();
+    let expires_at_epoch_ms = issued_at_epoch_ms + (request.expires_in_seconds.unwrap_or(600) as u128 * 1000);
+    let signer = Ed25519Signer::new(&state.encryption_key);
+    let payload = generate_context_payload(
+        &request.wallet_address,
+        &request.user_id,
+        &request.chain,
+        &request.session_id,
+        &request.context_data,
+        issued_at_epoch_ms,
+        expires_at_epoch_ms,
+        &signer,
+    );
+    Ok(Json(payload))
+}
 }
 
 #[cfg(test)]

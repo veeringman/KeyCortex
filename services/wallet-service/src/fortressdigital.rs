@@ -34,7 +34,10 @@ pub fn generate_context_payload(
         signature: String::new(), // Placeholder
     };
     let serialized = serde_json::to_string(&payload).unwrap();
-    let signature = signer.sign(serialized.as_bytes());
+    let signature_bytes = signer
+        .sign(serialized.as_bytes(), kc_api_types::SignPurpose::Proof)
+        .unwrap_or_default();
+    let signature = base64::encode(&signature_bytes);
     FortressDigitalContextPayload {
         signature,
         ..payload

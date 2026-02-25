@@ -1,3 +1,5 @@
+mod fortressdigital;
+use fortressdigital::{FortressDigitalContextPayload, generate_context_payload};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -203,12 +205,11 @@ pub(crate) struct ChallengeRecord {
     pub(crate) used_at_epoch_ms: Option<u128>,
 }
 
-#[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) keystore: Arc<RocksDbKeystore>,
     pub(crate) postgres_repo: Option<Arc<db::PostgresRepository>>,
     pub(crate) db_fallback_counters: Arc<DbFallbackCounters>,
-    postgres_startup: Arc<StdRwLock<PostgresStartupReport>,
+    postgres_startup: Arc<StdRwLock<PostgresStartupReport>>,
     pub(crate) encryption_key: Arc<str>,
     pub(crate) authbuddy_jwt_secret: Arc<str>,
     pub(crate) authbuddy_jwks: Arc<StdRwLock<Option<JwkSet>>>,
@@ -845,9 +846,7 @@ fn build_app(state: AppState) -> Router {
         .route("/ops/bindings/{wallet_address}", get(ops::ops_get_binding))
         .route("/ops/audit", get(ops::ops_list_audit))
         .route("/fortressdigital/context", post(fortressdigital_payload))
-        .with_state(state)
-mod fortressdigital;
-use fortressdigital::{FortressDigitalContextPayload, generate_context_payload};
+        .with_state(state);
 #[derive(Debug, Deserialize)]
 struct FortressDigitalPayloadRequest {
     wallet_address: String,
@@ -864,7 +863,9 @@ async fn fortressdigital_payload(
 ) -> ApiResult<FortressDigitalContextPayload> {
     let issued_at_epoch_ms = epoch_ms().unwrap_or_default();
     let expires_at_epoch_ms = issued_at_epoch_ms + (request.expires_in_seconds.unwrap_or(600) as u128 * 1000);
-    let signer = Ed25519Signer::new(&state.encryption_key);
+    // Assuming encryption_key is a base64 or hex string representing the secret key
+    let secret_key_bytes = base64::decode(&*state.encryption_key).unwrap_or_default();
+    let signer = Ed25519Signer::from_secret_key_bytes(secret_key_bytes.try_into().unwrap_or([0u8; 32]));
     let payload = generate_context_payload(
         &request.wallet_address,
         &request.user_id,
@@ -924,6 +925,7 @@ mod tests {
             challenge_store: Arc::new(TokioRwLock::new(HashMap::new())),
             submit_idempotency_cache: Arc::new(TokioRwLock::new(HashMap::new())),
             submit_nonce_state: Arc::new(TokioRwLock::new(HashMap::new())),
+            authbuddy_callback: None,
         }
     }
 

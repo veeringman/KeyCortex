@@ -119,6 +119,9 @@ async fn main() -> anyhow::Result<()> {
     let authbuddy_jwks_path = env::var("AUTHBUDDY_JWKS_PATH")
         .ok()
         .filter(|value| !value.trim().is_empty());
+    let authbuddy_jwks_url = env::var("AUTHBUDDY_JWKS_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
     let authbuddy_jwks_refresh_seconds = env::var("AUTHBUDDY_JWKS_REFRESH_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -149,28 +152,67 @@ async fn main() -> anyhow::Result<()> {
         challenge_store: Arc::new(TokioRwLock::new(HashMap::new())),
     };
 
-    if let Some(path) = authbuddy_jwks_path {
+    if authbuddy_jwks_url.is_some() || authbuddy_jwks_path.is_some() {
         let jwks_cache = Arc::clone(&state.authbuddy_jwks);
+        let jwks_url = authbuddy_jwks_url.clone();
+        let jwks_path = authbuddy_jwks_path.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(authbuddy_jwks_refresh_seconds));
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .ok();
+            let mut failure_count: u32 = 0;
+
             loop {
-                interval.tick().await;
-                match fs::read_to_string(&path) {
-                    Ok(content) => match serde_json::from_str::<JwkSet>(&content) {
+                let mut refreshed = false;
+
+                if let (Some(url), Some(http_client)) = (jwks_url.as_ref(), client.as_ref()) {
+                    match fetch_jwks_from_url(http_client, url).await {
                         Ok(parsed) => {
                             if let Ok(mut guard) = jwks_cache.write() {
                                 *guard = Some(parsed);
-                                info!("reloaded AuthBuddy JWKS from {}", path);
                             }
+                            info!("reloaded AuthBuddy JWKS from URL {}", url);
+                            refreshed = true;
                         }
                         Err(err) => {
-                            warn!("failed to parse AuthBuddy JWKS file {}: {}", path, err);
+                            warn!("failed to refresh AuthBuddy JWKS from URL {}: {}", url, err);
                         }
-                    },
-                    Err(err) => {
-                        warn!("failed to read AuthBuddy JWKS file {}: {}", path, err);
                     }
                 }
+
+                if !refreshed {
+                    if let Some(path) = jwks_path.as_ref() {
+                        match fs::read_to_string(path) {
+                            Ok(content) => match serde_json::from_str::<JwkSet>(&content) {
+                                Ok(parsed) => {
+                                    if let Ok(mut guard) = jwks_cache.write() {
+                                        *guard = Some(parsed);
+                                    }
+                                    info!("reloaded AuthBuddy JWKS from file {}", path);
+                                    refreshed = true;
+                                }
+                                Err(err) => {
+                                    warn!("failed to parse AuthBuddy JWKS file {}: {}", path, err);
+                                }
+                            },
+                            Err(err) => {
+                                warn!("failed to read AuthBuddy JWKS file {}: {}", path, err);
+                            }
+                        }
+                    }
+                }
+
+                let sleep_seconds = if refreshed {
+                    failure_count = 0;
+                    authbuddy_jwks_refresh_seconds
+                } else {
+                    failure_count = failure_count.saturating_add(1);
+                    let backoff = authbuddy_jwks_refresh_seconds.saturating_mul(1_u64 << failure_count.min(5));
+                    backoff.min(300)
+                };
+
+                tokio::time::sleep(Duration::from_secs(sleep_seconds)).await;
             }
         });
     }
@@ -811,4 +853,21 @@ fn decode_authbuddy_rs256_claims(token: &str, jwks: &JwkSet) -> Result<AuthBuddy
         .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
 
     Ok(token_data.claims)
+}
+
+async fn fetch_jwks_from_url(client: &reqwest::Client, url: &str) -> Result<JwkSet, String> {
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "request failed".to_owned())?;
+
+    if !response.status().is_success() {
+        return Err(format!("unexpected status {}", response.status()));
+    }
+
+    response
+        .json::<JwkSet>()
+        .await
+        .map_err(|_| "invalid JWKS payload".to_owned())
 }

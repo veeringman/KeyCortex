@@ -1,4 +1,4 @@
-![KeyCortex Logo](../keycortex_logo.png)
+<img src="../keycortex_logo.png" alt="KeyCortex Logo" width="180" />
 
 # KeyCortex Rust Crates
 

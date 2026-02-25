@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
@@ -49,6 +49,19 @@ struct WalletBalanceQuery {
     chain: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OpsAuditQuery {
+    limit: Option<usize>,
+    event_type: Option<String>,
+    wallet_address: Option<String>,
+    outcome: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpsAuditResponse {
+    events: Vec<AuditEventRecord>,
+}
+
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 #[derive(Debug, Clone)]
@@ -95,6 +108,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/challenge", post(auth_challenge))
         .route("/auth/verify", post(auth_verify))
         .route("/auth/bind", post(auth_bind))
+        .route("/ops/bindings/{wallet_address}", get(ops_get_binding))
+        .route("/ops/audit", get(ops_list_audit))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
@@ -438,6 +453,42 @@ async fn auth_bind(
     }))
 }
 
+async fn ops_get_binding(
+    State(state): State<AppState>,
+    Path(wallet_address): Path<String>,
+) -> ApiResult<WalletBindingRecord> {
+    if wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
+    let record = state
+        .keystore
+        .load_wallet_binding(&wallet_address)
+        .map_err(internal_error)?
+        .ok_or_else(|| not_found("wallet binding not found"))?;
+
+    Ok(Json(record))
+}
+
+async fn ops_list_audit(
+    State(state): State<AppState>,
+    Query(query): Query<OpsAuditQuery>,
+) -> ApiResult<OpsAuditResponse> {
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+
+    let events = state
+        .keystore
+        .list_audit_events(
+            limit,
+            query.event_type.as_deref(),
+            query.wallet_address.as_deref(),
+            query.outcome.as_deref(),
+        )
+        .map_err(internal_error)?;
+
+    Ok(Json(OpsAuditResponse { events }))
+}
+
 fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
@@ -450,6 +501,15 @@ fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {
 fn unauthorized(message: &str) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: message.to_owned(),
+        }),
+    )
+}
+
+fn not_found(message: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_FOUND,
         Json(ErrorResponse {
             error: message.to_owned(),
         }),

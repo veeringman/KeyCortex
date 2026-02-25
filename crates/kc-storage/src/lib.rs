@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use rocksdb::{DB, Options};
+use rocksdb::{DB, IteratorMode, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,6 +114,51 @@ impl RocksDbKeystore {
         let value = serde_json::to_vec(&record)?;
         self.db.put(key.as_bytes(), value)?;
         Ok(record.event_id)
+    }
+
+    pub fn list_audit_events(
+        &self,
+        limit: usize,
+        event_type: Option<&str>,
+        wallet_address: Option<&str>,
+        outcome: Option<&str>,
+    ) -> Result<Vec<AuditEventRecord>> {
+        let mut events = Vec::new();
+
+        for (key, value) in self.db.iterator(IteratorMode::Start) {
+            if !key.as_ref().starts_with(b"audit:") {
+                continue;
+            }
+
+            let record = serde_json::from_slice::<AuditEventRecord>(&value)?;
+
+            if let Some(expected) = event_type {
+                if record.event_type != expected {
+                    continue;
+                }
+            }
+
+            if let Some(expected) = wallet_address {
+                if record.wallet_address.as_deref() != Some(expected) {
+                    continue;
+                }
+            }
+
+            if let Some(expected) = outcome {
+                if record.outcome != expected {
+                    continue;
+                }
+            }
+
+            events.push(record);
+        }
+
+        events.sort_by(|a, b| b.timestamp_epoch_ms.cmp(&a.timestamp_epoch_ms));
+        if events.len() > limit {
+            events.truncate(limit);
+        }
+
+        Ok(events)
     }
 }
 

@@ -1,0 +1,172 @@
+![KeyCortex Logo](./keycortex_logo.png)
+
+# KeyCortex TODO Tracker (Alive)
+
+Last Updated: 2026-02-25
+Owner: KeyCortex Team
+
+Purpose: Persistent progress tracker to survive crashes, container restarts, and context resets.
+
+---
+
+## Status Legend
+
+- [ ] Not started
+- [~] In progress
+- [x] Completed
+- [!] Blocked
+
+---
+
+## Current Phase
+
+Phase: Foundation & Architecture
+
+---
+
+## Master TODO List
+
+### A) Product & Architecture
+
+- [x] Capture Digital Wallet + Wallet Auth Adapter detailed specification
+- [x] Decide cross-platform Rust-first tech stack (desktop/web/mobile)
+- [x] Define multi-chain extensible approach with FlowCortex-first MVP
+- [x] Define MVP transaction scope to `flowcortex-l0` + assets `PROOF` and `FloweR`
+- [ ] Finalize repository-wide folder structure for Rust workspace
+- [ ] Freeze v0.1 API contracts for wallet/auth endpoints
+
+### B) Rust Workspace Bootstrap
+
+- [ ] Create Rust workspace root (`Cargo.toml`) and standard project layout
+- [ ] Create shared crates:
+  - [ ] `kc-crypto`
+  - [ ] `kc-wallet-core`
+  - [ ] `kc-storage`
+  - [ ] `kc-chain-client`
+  - [ ] `kc-chain-flowcortex`
+  - [ ] `kc-auth-adapter`
+  - [ ] `kc-api-types`
+- [ ] Create `services/wallet-service` with Axum skeleton
+- [ ] Add baseline lint/format settings (`rustfmt`, `clippy`)
+
+### C) Security & Signing Core
+
+- [ ] Implement key generation for Ed25519
+- [ ] Add secp256k1 support path (feature-gated)
+- [ ] Implement encrypted private key storage interface
+- [ ] Enforce “private keys never leave service boundary”
+- [ ] Add purpose-tagged signing (`auth`, `transaction`, `proof`)
+- [ ] Add zeroization for sensitive memory
+
+### D) Auth Adapter Flow
+
+- [ ] Implement `POST /auth/challenge` (nonce + TTL + single use)
+- [ ] Implement `POST /auth/verify` (signature validation)
+- [ ] Implement `POST /auth/bind` (IdP token-based wallet-user binding)
+- [ ] Persist challenge lifecycle (`issued`, `used`, `expired`)
+- [ ] Persist wallet binding audit log
+
+### E) Chain Integration (MVP)
+
+- [ ] Define `ChainAdapter` trait in `kc-chain-client`
+- [ ] Implement FlowCortex adapter in `kc-chain-flowcortex`
+- [ ] Implement `GET /wallet/balance` via FlowCortex
+- [ ] Implement transaction submit path via FlowCortex
+- [ ] Enforce runtime allowlist:
+  - [ ] chain = `flowcortex-l0`
+  - [ ] assets = `PROOF`, `FloweR`
+
+### F) API & Data Layer
+
+- [ ] Implement `POST /wallet/create`
+- [ ] Implement `POST /wallet/sign`
+- [ ] Define shared request/response DTOs
+- [ ] Add Postgres migrations for:
+  - [ ] `wallet_bindings`
+  - [ ] `challenge_store`
+  - [ ] `verification_logs`
+- [ ] Add RocksDB keystore persistence
+
+### G) UI & Client Surfaces
+
+- [x] Add placeholder network and coin icons + centralized icon manifest
+- [ ] Desktop shell baseline (Tauri)
+- [ ] Web wallet baseline (Next.js)
+- [ ] Mobile bridge baseline (UniFFI generation)
+- [ ] Wallet UI screens:
+  - [ ] create/import wallet
+  - [ ] connect wallet (auth)
+  - [ ] view balance
+  - [ ] sign settlement transaction
+  - [ ] view tx history
+- [ ] Ops/Auth console screens:
+  - [ ] view wallet bindings
+  - [ ] revoke binding
+  - [ ] view verification logs
+
+### H) Integrations
+
+- [ ] AuthBuddy integration: wallet binding callback contract
+- [ ] FortressDigital context payload integration
+- [ ] ProofCortex commitment payload generation
+- [ ] FlowCortex final settlement + anchor flow verification
+
+### I) Quality Gates
+
+- [ ] Unit tests for crypto/signing and challenge flow
+- [ ] Integration tests for wallet/auth REST APIs
+- [ ] E2E happy path: login → bind wallet → sign tx → submit
+- [ ] Security checks (nonce replay, invalid sig, expired challenge)
+- [ ] Release checklist for v0.1 MVP
+
+---
+
+## Active Sprint Board
+
+### In Progress
+
+- [ ] None currently
+
+### Completed (Recent)
+
+- [x] Prepare persistent TODO tracker and operating process
+- [x] Add placeholder network/coin icon pack and UI icon manifest
+
+### Next Up
+
+- [ ] Scaffold Rust workspace and core crates
+- [ ] Implement chain adapter trait + FlowCortex adapter skeleton
+- [ ] Implement initial wallet/auth API skeleton in Axum
+
+### Blockers
+
+- [ ] None currently
+
+---
+
+## Change Log
+
+- 2026-02-25: Created tracker with baseline scope, phases, and actionable breakdown.
+- 2026-02-25: Marked architecture/stack/spec decisions as completed based on existing docs.
+- 2026-02-25: Added UI placeholder icons for major networks/coins and a centralized icon manifest with MVP FlowCortex + PROOF/FloweR constraints.
+
+---
+
+## Update Protocol (Use Every Session)
+
+1. Update `Last Updated` date.
+2. Move items between `In Progress`, `Completed`, `Blocked`.
+3. Add a one-line entry in `Change Log` for every meaningful update.
+4. Keep `Next Up` limited to top 3 priorities.
+5. Never delete completed items; only mark `[x]` for audit continuity.
+
+---
+
+## Recovery Protocol (After Crash/Restart)
+
+1. Open this tracker first.
+2. Resume from `In Progress`; if empty, start from first item under `Next Up`.
+3. Validate scope constraints before coding:
+   - MVP chain: `flowcortex-l0`
+   - MVP assets: `PROOF`, `FloweR`
+4. Continue updating this file at end of each work block.

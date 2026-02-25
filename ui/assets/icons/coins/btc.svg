@@ -1,0 +1,5 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BTC coin placeholder icon">
+  <rect width="128" height="128" rx="24" fill="#E5E7EB"/>
+  <circle cx="64" cy="64" r="36" fill="#9CA3AF"/>
+  <text x="64" y="73" text-anchor="middle" font-size="24" font-family="Arial, sans-serif" fill="#F9FAFB">B</text>
+</svg>

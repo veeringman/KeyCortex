@@ -1,0 +1,56 @@
+{
+  "version": "0.1.0",
+  "updated_at": "2026-02-25",
+  "defaults": {
+    "network": "ui/assets/icons/common/network-default.svg",
+    "coin": "ui/assets/icons/common/coin-default.svg"
+  },
+  "networks": {
+    "flowcortex-l0": {
+      "label": "FlowCortex L0",
+      "icon": "ui/assets/icons/networks/flowcortex.svg"
+    },
+    "bitcoin": {
+      "label": "Bitcoin",
+      "icon": "ui/assets/icons/networks/bitcoin.svg"
+    },
+    "ethereum": {
+      "label": "Ethereum",
+      "icon": "ui/assets/icons/networks/ethereum.svg"
+    },
+    "solana": {
+      "label": "Solana",
+      "icon": "ui/assets/icons/networks/solana.svg"
+    },
+    "polygon": {
+      "label": "Polygon",
+      "icon": "ui/assets/icons/networks/polygon.svg"
+    },
+    "bnb-chain": {
+      "label": "BNB Chain",
+      "icon": "ui/assets/icons/networks/bnb-chain.svg"
+    }
+  },
+  "coins": {
+    "PROOF": {
+      "label": "PROOF",
+      "icon": "ui/assets/icons/coins/proof.svg"
+    },
+    "FloweR": {
+      "label": "FloweR",
+      "icon": "ui/assets/icons/coins/flower.svg"
+    },
+    "BTC": {
+      "label": "Bitcoin",
+      "icon": "ui/assets/icons/coins/btc.svg"
+    },
+    "ETH": {
+      "label": "Ethereum",
+      "icon": "ui/assets/icons/coins/eth.svg"
+    }
+  },
+  "mvp_constraints": {
+    "active_chain": "flowcortex-l0",
+    "active_assets": ["PROOF", "FloweR"]
+  }
+}

@@ -151,12 +151,13 @@ Phase: Foundation & Architecture
 - [x] Add startup/health auth mode and JWKS status visibility
 - [x] Add `/readyz` dependency checks for keystore and auth readiness
 - [x] Add FlowCortex submit transaction endpoint with MVP allowlist checks
+- [x] Add readiness check for external AuthBuddy JWKS reachability status
 
 ### Next Up
 
-- [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add readiness check for external AuthBuddy JWKS reachability status
 - [ ] Add request idempotency key handling for `/wallet/submit`
+- [ ] Add Postgres-backed audit logs for challenge/verify/bind events
+- [ ] Add tx replay protection nonce model for `/wallet/submit`
 
 ### Blockers
 
@@ -189,6 +190,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Extended `/health` to expose auth mode and JWKS runtime status (`source`, `loaded`, `last_refresh`, `last_error`).
 - 2026-02-25: Added `/readyz` endpoint returning readiness status for keystore and auth dependency state.
 - 2026-02-25: Added `POST /wallet/submit` with local tx signing + FlowCortex adapter submission and strict MVP chain/asset enforcement.
+- 2026-02-25: Extended `/readyz` with external AuthBuddy JWKS reachability signal and URL dependency readiness gating.
 
 ---
 

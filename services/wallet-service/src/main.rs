@@ -54,6 +54,7 @@ struct ReadinessResponse {
     keystore_ready: bool,
     auth_ready: bool,
     auth_mode: String,
+    jwks_reachable: Option<bool>,
     reason: Option<String>,
 }
 
@@ -373,11 +374,18 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
     }
     .to_owned();
 
-    let ready = keystore_ready && auth_ready;
+    let jwks_reachable = match jwks_snapshot.source.as_deref() {
+        Some("url") => Some(jwks_snapshot.last_error.is_none()),
+        _ => None,
+    };
+
+    let ready = keystore_ready && auth_ready && jwks_reachable.unwrap_or(true);
     let reason = if ready {
         None
     } else if !keystore_ready {
         Some("keystore not ready".to_owned())
+    } else if jwks_reachable == Some(false) {
+        Some("jwks endpoint not reachable".to_owned())
     } else {
         Some("auth mode not ready".to_owned())
     };
@@ -396,6 +404,7 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
             keystore_ready,
             auth_ready,
             auth_mode,
+            jwks_reachable,
             reason,
         }),
     )

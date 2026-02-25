@@ -14,7 +14,7 @@ use kc_api_types::{AssetSymbol, WalletAddress};
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
-use kc_storage::{Keystore, RocksDbKeystore};
+use kc_storage::{AuditEventRecord, Keystore, RocksDbKeystore, WalletBindingRecord};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -294,21 +294,81 @@ async fn auth_verify(
     }))
 }
 
-async fn auth_bind(headers: HeaderMap, Json(request): Json<AuthBindRequest>) -> ApiResult<AuthBindResponse> {
-    let auth_header = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| unauthorized("missing Authorization header"))?;
+async fn auth_bind(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AuthBindRequest>,
+) -> ApiResult<AuthBindResponse> {
+    let now = epoch_ms().map_err(internal_error)?;
+
+    let auth_header = match headers.get("authorization").and_then(|v| v.to_str().ok()) {
+        Some(value) => value,
+        None => {
+            append_audit_event(
+                &state,
+                AuditEventRecord {
+                    event_id: String::new(),
+                    event_type: "auth_bind".to_owned(),
+                    wallet_address: Some(request.wallet_address.clone()),
+                    user_id: None,
+                    chain: Some(request.chain.clone()),
+                    outcome: "denied".to_owned(),
+                    message: Some("missing Authorization header".to_owned()),
+                    timestamp_epoch_ms: now,
+                },
+            );
+            return Err(unauthorized("missing Authorization header"));
+        }
+    };
 
     if !auth_header.starts_with("Bearer ") {
+        append_audit_event(
+            &state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "auth_bind".to_owned(),
+                wallet_address: Some(request.wallet_address.clone()),
+                user_id: None,
+                chain: Some(request.chain.clone()),
+                outcome: "denied".to_owned(),
+                message: Some("invalid Authorization format".to_owned()),
+                timestamp_epoch_ms: now,
+            },
+        );
         return Err(unauthorized("invalid Authorization format"));
     }
 
     if request.wallet_address.trim().is_empty() {
+        append_audit_event(
+            &state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "auth_bind".to_owned(),
+                wallet_address: Some(request.wallet_address.clone()),
+                user_id: None,
+                chain: Some(request.chain.clone()),
+                outcome: "denied".to_owned(),
+                message: Some("wallet_address is required".to_owned()),
+                timestamp_epoch_ms: now,
+            },
+        );
         return Err(bad_request("wallet_address is required"));
     }
 
     if request.chain != FLOWCORTEX_L1 {
+        append_audit_event(
+            &state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "auth_bind".to_owned(),
+                wallet_address: Some(request.wallet_address.clone()),
+                user_id: None,
+                chain: Some(request.chain.clone()),
+                outcome: "denied".to_owned(),
+                message: Some("unsupported chain for MVP".to_owned()),
+                timestamp_epoch_ms: now,
+            },
+        );
         return Err(bad_request("unsupported chain for MVP; only flowcortex-l1 is enabled"));
     }
 
@@ -319,12 +379,62 @@ async fn auth_bind(headers: HeaderMap, Json(request): Json<AuthBindRequest>) -> 
         user_id.to_owned()
     };
 
+    let wallet_exists = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .is_some();
+
+    if !wallet_exists {
+        append_audit_event(
+            &state,
+            AuditEventRecord {
+                event_id: String::new(),
+                event_type: "auth_bind".to_owned(),
+                wallet_address: Some(request.wallet_address.clone()),
+                user_id: Some(user_id.clone()),
+                chain: Some(request.chain.clone()),
+                outcome: "denied".to_owned(),
+                message: Some("wallet not found".to_owned()),
+                timestamp_epoch_ms: now,
+            },
+        );
+        return Err(bad_request("wallet not found"));
+    }
+
+    let binding = WalletBindingRecord {
+        wallet_address: request.wallet_address.clone(),
+        user_id: user_id.clone(),
+        chain: request.chain.clone(),
+        last_verified_epoch_ms: now,
+    };
+
+    state
+        .keystore
+        .save_wallet_binding(&binding)
+        .map_err(internal_error)?;
+
+    append_audit_event(
+        &state,
+        AuditEventRecord {
+            event_id: String::new(),
+            event_type: "auth_bind".to_owned(),
+            wallet_address: Some(request.wallet_address.clone()),
+            user_id: Some(user_id.clone()),
+            chain: Some(request.chain.clone()),
+            outcome: "success".to_owned(),
+            message: Some("wallet binding persisted".to_owned()),
+            timestamp_epoch_ms: now,
+        },
+    );
+
     Ok(Json(AuthBindResponse {
         bound: true,
         user_id,
         wallet_address: request.wallet_address,
         chain: request.chain,
-        bound_at_epoch_ms: epoch_ms().unwrap_or_default(),
+        bound_at_epoch_ms: now,
     }))
 }
 
@@ -382,4 +492,8 @@ fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
         idx += 2;
     }
     Ok(output)
+}
+
+fn append_audit_event(state: &AppState, event: AuditEventRecord) {
+    let _ = state.keystore.append_audit_event(event);
 }

@@ -1,9 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use rocksdb::{DB, Options};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 #[async_trait]
 pub trait Keystore: Send + Sync {
@@ -48,6 +50,26 @@ pub struct RocksDbKeystore {
     db: Arc<DB>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletBindingRecord {
+    pub wallet_address: String,
+    pub user_id: String,
+    pub chain: String,
+    pub last_verified_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEventRecord {
+    pub event_id: String,
+    pub event_type: String,
+    pub wallet_address: Option<String>,
+    pub user_id: Option<String>,
+    pub chain: Option<String>,
+    pub outcome: String,
+    pub message: Option<String>,
+    pub timestamp_epoch_ms: u128,
+}
+
 impl RocksDbKeystore {
     pub fn open_default(path: &str) -> Result<Self> {
         let mut options = Options::default();
@@ -58,6 +80,40 @@ impl RocksDbKeystore {
 
     fn key_for_wallet(wallet_address: &str) -> String {
         format!("wallet-key:{wallet_address}")
+    }
+
+    fn key_for_wallet_binding(wallet_address: &str) -> String {
+        format!("wallet-binding:{wallet_address}")
+    }
+
+    fn key_for_audit_event(timestamp_epoch_ms: u128, event_id: &str) -> String {
+        format!("audit:{timestamp_epoch_ms}:{event_id}")
+    }
+
+    pub fn save_wallet_binding(&self, record: &WalletBindingRecord) -> Result<()> {
+        let key = Self::key_for_wallet_binding(&record.wallet_address);
+        let value = serde_json::to_vec(record)?;
+        self.db.put(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    pub fn load_wallet_binding(&self, wallet_address: &str) -> Result<Option<WalletBindingRecord>> {
+        let key = Self::key_for_wallet_binding(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(serde_json::from_slice::<WalletBindingRecord>(&raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn append_audit_event(&self, mut record: AuditEventRecord) -> Result<String> {
+        if record.event_id.trim().is_empty() {
+            record.event_id = Uuid::new_v4().to_string();
+        }
+        let key = Self::key_for_audit_event(record.timestamp_epoch_ms, &record.event_id);
+        let value = serde_json::to_vec(&record)?;
+        self.db.put(key.as_bytes(), value)?;
+        Ok(record.event_id)
     }
 }
 

@@ -62,9 +62,9 @@ Phase: Foundation & Architecture
 
 - [x] Implement `POST /auth/challenge` (nonce + TTL + single use)
 - [x] Implement `POST /auth/verify` (signature validation)
-- [ ] Implement `POST /auth/bind` (IdP token-based wallet-user binding)
+- [x] Implement `POST /auth/bind` (IdP token-based wallet-user binding)
 - [x] Persist challenge lifecycle (`issued`, `used`, `expired`) (in-service store)
-- [ ] Persist wallet binding audit log
+- [x] Persist wallet binding audit log
 
 ### E) Chain Integration (MVP)
 
@@ -140,12 +140,13 @@ Phase: Foundation & Architecture
 - [x] Replace in-memory keystore with RocksDB-backed persistence
 - [x] Add auth challenge TTL + one-time-use enforcement
 - [x] Implement real cryptographic auth signature verification
+- [x] Persist `/auth/bind` wallet bindings and audit events
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
-- [ ] Implement IdP-backed `/auth/bind` persistence and audit logging
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
+- [ ] Expose binding/audit read endpoints for ops console
 
 ### Blockers
 
@@ -167,6 +168,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Replaced in-memory keystore with RocksDB-backed persistence and added `KEYCORTEX_KEYSTORE_PATH` runtime path configuration.
 - 2026-02-25: Added challenge store lifecycle controls (`issued`, `used`, `expired`) with TTL and one-time-use enforcement for `/auth/challenge` and `/auth/verify`.
 - 2026-02-25: Replaced placeholder `/auth/verify` logic with real Ed25519 verification against wallet-custodied keys and auth-domain payload verification.
+- 2026-02-25: Added `/auth/bind` persistence and audit logging via RocksDB (`wallet_binding` + `audit` records) with success/denied event outcomes.
 
 ---
 

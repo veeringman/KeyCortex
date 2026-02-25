@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use kc_api_types::{
     AuthBindRequest, AuthBindResponse, AuthChallengeResponse, AuthVerifyRequest, AuthVerifyResponse,
     SignPurpose, WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
@@ -62,6 +63,19 @@ struct OpsAuditResponse {
     events: Vec<AuditEventRecord>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AuthBuddyClaims {
+    sub: String,
+    roles: Option<Vec<String>>,
+    role: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AuthPrincipal {
+    user_id: String,
+    roles: Vec<String>,
+}
+
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 #[derive(Debug, Clone)]
@@ -76,6 +90,7 @@ struct ChallengeRecord {
 struct AppState {
     keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
+    authbuddy_jwt_secret: Arc<str>,
     challenge_store: Arc<RwLock<HashMap<String, ChallengeRecord>>>,
 }
 
@@ -96,6 +111,10 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         keystore: Arc::new(keystore),
         encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
+        authbuddy_jwt_secret: Arc::<str>::from(
+            env::var("AUTHBUDDY_JWT_SECRET")
+                .unwrap_or_else(|_| "authbuddy-dev-secret-change-me".to_owned()),
+        ),
         challenge_store: Arc::new(RwLock::new(HashMap::new())),
     };
 
@@ -316,9 +335,9 @@ async fn auth_bind(
 ) -> ApiResult<AuthBindResponse> {
     let now = epoch_ms().map_err(internal_error)?;
 
-    let auth_header = match headers.get("authorization").and_then(|v| v.to_str().ok()) {
-        Some(value) => value,
-        None => {
+    let principal = match parse_authbuddy_principal(&headers, &state) {
+        Ok(principal) => principal,
+        Err(message) => {
             append_audit_event(
                 &state,
                 AuditEventRecord {
@@ -328,30 +347,13 @@ async fn auth_bind(
                     user_id: None,
                     chain: Some(request.chain.clone()),
                     outcome: "denied".to_owned(),
-                    message: Some("missing Authorization header".to_owned()),
+                    message: Some(message.clone()),
                     timestamp_epoch_ms: now,
                 },
             );
-            return Err(unauthorized("missing Authorization header"));
+            return Err(unauthorized(&message));
         }
     };
-
-    if !auth_header.starts_with("Bearer ") {
-        append_audit_event(
-            &state,
-            AuditEventRecord {
-                event_id: String::new(),
-                event_type: "auth_bind".to_owned(),
-                wallet_address: Some(request.wallet_address.clone()),
-                user_id: None,
-                chain: Some(request.chain.clone()),
-                outcome: "denied".to_owned(),
-                message: Some("invalid Authorization format".to_owned()),
-                timestamp_epoch_ms: now,
-            },
-        );
-        return Err(unauthorized("invalid Authorization format"));
-    }
 
     if request.wallet_address.trim().is_empty() {
         append_audit_event(
@@ -387,12 +389,7 @@ async fn auth_bind(
         return Err(bad_request("unsupported chain for MVP; only flowcortex-l1 is enabled"));
     }
 
-    let user_id = auth_header.trim_start_matches("Bearer ").trim();
-    let user_id = if user_id.is_empty() {
-        "authbuddy-user".to_owned()
-    } else {
-        user_id.to_owned()
-    };
+    let user_id = principal.user_id;
 
     let wallet_exists = state
         .keystore
@@ -582,9 +579,9 @@ fn require_ops_access(
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     let now = epoch_ms().unwrap_or_default();
 
-    let auth_header = match headers.get("authorization").and_then(|value| value.to_str().ok()) {
-        Some(value) if value.starts_with("Bearer ") => value,
-        _ => {
+    let principal = match parse_authbuddy_principal(headers, state) {
+        Ok(principal) => principal,
+        Err(message) => {
             append_audit_event(
                 state,
                 AuditEventRecord {
@@ -594,7 +591,7 @@ fn require_ops_access(
                     user_id: None,
                     chain: Some(FLOWCORTEX_L1.to_owned()),
                     outcome: "denied".to_owned(),
-                    message: Some(format!("{operation}: missing or invalid Authorization header")),
+                    message: Some(format!("{operation}: {message}")),
                     timestamp_epoch_ms: now,
                 },
             );
@@ -602,30 +599,7 @@ fn require_ops_access(
         }
     };
 
-    let user_id = auth_header.trim_start_matches("Bearer ").trim();
-    if user_id.is_empty() {
-        append_audit_event(
-            state,
-            AuditEventRecord {
-                event_id: String::new(),
-                event_type: "ops_access".to_owned(),
-                wallet_address: wallet_address.map(ToOwned::to_owned),
-                user_id: None,
-                chain: Some(FLOWCORTEX_L1.to_owned()),
-                outcome: "denied".to_owned(),
-                message: Some(format!("{operation}: empty bearer principal")),
-                timestamp_epoch_ms: now,
-            },
-        );
-        return Err(unauthorized("ops access denied"));
-    }
-
-    let role_header = headers
-        .get("x-role")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-
-    let has_ops_role = role_header.split(',').any(|role| role.trim() == "ops-admin");
+    let has_ops_role = principal.roles.iter().any(|role| role == "ops-admin");
     if !has_ops_role {
         append_audit_event(
             state,
@@ -633,10 +607,10 @@ fn require_ops_access(
                 event_id: String::new(),
                 event_type: "ops_access".to_owned(),
                 wallet_address: wallet_address.map(ToOwned::to_owned),
-                user_id: Some(user_id.to_owned()),
+                user_id: Some(principal.user_id.clone()),
                 chain: Some(FLOWCORTEX_L1.to_owned()),
                 outcome: "denied".to_owned(),
-                message: Some(format!("{operation}: missing ops-admin role in x-role header")),
+                message: Some(format!("{operation}: missing ops-admin role in JWT claims")),
                 timestamp_epoch_ms: now,
             },
         );
@@ -649,7 +623,7 @@ fn require_ops_access(
             event_id: String::new(),
             event_type: "ops_access".to_owned(),
             wallet_address: wallet_address.map(ToOwned::to_owned),
-            user_id: Some(user_id.to_owned()),
+            user_id: Some(principal.user_id.clone()),
             chain: Some(FLOWCORTEX_L1.to_owned()),
             outcome: "success".to_owned(),
             message: Some(format!("{operation}: access granted")),
@@ -657,5 +631,49 @@ fn require_ops_access(
         },
     );
 
-    Ok(user_id.to_owned())
+    Ok(principal.user_id)
+}
+
+fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<AuthPrincipal, String> {
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "missing Authorization header".to_owned())?;
+
+    if !auth_header.starts_with("Bearer ") {
+        return Err("invalid Authorization format".to_owned());
+    }
+
+    let token = auth_header.trim_start_matches("Bearer ").trim();
+    if token.is_empty() {
+        return Err("missing bearer token".to_owned());
+    }
+
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = false;
+    validation.required_spec_claims.clear();
+
+    let token_data = decode::<AuthBuddyClaims>(
+        token,
+        &DecodingKey::from_secret(state.authbuddy_jwt_secret.as_bytes()),
+        &validation,
+    )
+    .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
+
+    let user_id = token_data.claims.sub.trim().to_owned();
+    if user_id.is_empty() {
+        return Err("invalid AuthBuddy JWT subject".to_owned());
+    }
+
+    let mut roles = token_data.claims.roles.unwrap_or_default();
+    if let Some(role) = token_data.claims.role {
+        for entry in role.split(',') {
+            let value = entry.trim();
+            if !value.is_empty() {
+                roles.push(value.to_owned());
+            }
+        }
+    }
+
+    Ok(AuthPrincipal { user_id, roles })
 }

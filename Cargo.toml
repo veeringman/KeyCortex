@@ -23,6 +23,7 @@ async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+jsonwebtoken = "9"
 rand = "0.8"
 rocksdb = "0.22"
 serde = { version = "1", features = ["derive"] }

@@ -32,22 +32,22 @@ Phase: Foundation & Architecture
 - [x] Decide cross-platform Rust-first tech stack (desktop/web/mobile)
 - [x] Define multi-chain extensible approach with FlowCortex-first MVP
 - [x] Define MVP transaction scope to `flowcortex-l0` + assets `PROOF` and `FloweR`
-- [ ] Finalize repository-wide folder structure for Rust workspace
+- [x] Finalize repository-wide folder structure for Rust workspace
 - [ ] Freeze v0.1 API contracts for wallet/auth endpoints
 
 ### B) Rust Workspace Bootstrap
 
-- [ ] Create Rust workspace root (`Cargo.toml`) and standard project layout
-- [ ] Create shared crates:
-  - [ ] `kc-crypto`
-  - [ ] `kc-wallet-core`
-  - [ ] `kc-storage`
-  - [ ] `kc-chain-client`
-  - [ ] `kc-chain-flowcortex`
-  - [ ] `kc-auth-adapter`
-  - [ ] `kc-api-types`
-- [ ] Create `services/wallet-service` with Axum skeleton
-- [ ] Add baseline lint/format settings (`rustfmt`, `clippy`)
+- [x] Create Rust workspace root (`Cargo.toml`) and standard project layout
+- [x] Create shared crates:
+  - [x] `kc-crypto`
+  - [x] `kc-wallet-core`
+  - [x] `kc-storage`
+  - [x] `kc-chain-client`
+  - [x] `kc-chain-flowcortex`
+  - [x] `kc-auth-adapter`
+  - [x] `kc-api-types`
+- [x] Create `services/wallet-service` with Axum skeleton
+- [x] Add baseline lint/format settings (`rustfmt`, `clippy`)
 
 ### C) Security & Signing Core
 
@@ -68,8 +68,8 @@ Phase: Foundation & Architecture
 
 ### E) Chain Integration (MVP)
 
-- [ ] Define `ChainAdapter` trait in `kc-chain-client`
-- [ ] Implement FlowCortex adapter in `kc-chain-flowcortex`
+- [x] Define `ChainAdapter` trait in `kc-chain-client`
+- [x] Implement FlowCortex adapter in `kc-chain-flowcortex`
 - [ ] Implement `GET /wallet/balance` via FlowCortex
 - [ ] Implement transaction submit path via FlowCortex
 - [ ] Enforce runtime allowlist:
@@ -133,12 +133,13 @@ Phase: Foundation & Architecture
 - [x] Prepare persistent TODO tracker and operating process
 - [x] Add placeholder network/coin icon pack and UI icon manifest
 - [x] Add shared icon resolver module for network/coin icon lookup
+- [x] Scaffold Rust workspace, shared crates, and wallet-service baseline
 
 ### Next Up
 
-- [ ] Scaffold Rust workspace and core crates
-- [ ] Implement chain adapter trait + FlowCortex adapter skeleton
 - [ ] Implement initial wallet/auth API skeleton in Axum
+- [ ] Add FlowCortex balance and submit transaction endpoints
+- [ ] Implement challenge issuance, verify, and bind endpoint contracts
 
 ### Blockers
 
@@ -152,6 +153,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Marked architecture/stack/spec decisions as completed based on existing docs.
 - 2026-02-25: Added UI placeholder icons for major networks/coins and a centralized icon manifest with MVP FlowCortex + PROOF/FloweR constraints.
 - 2026-02-25: Added shared icon resolver module for consistent icon path resolution, fallback handling, and MVP allowlist checks.
+- 2026-02-25: Scaffolded Rust workspace with core crates, chain adapter interfaces, FlowCortex adapter baseline, and Axum wallet-service starter.
 
 ---
 

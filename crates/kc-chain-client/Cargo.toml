@@ -1,0 +1,11 @@
+[package]
+name = "kc-chain-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+kc-api-types = { path = "../kc-api-types" }

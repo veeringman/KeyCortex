@@ -1,28 +1,100 @@
 {
   "$schema": "https://keycortex.dev/schemas/wallet-ux.schema.json",
+  "version": "1.1.0",
   "description": "Standard wallet UI/UX template for cross-platform reproduction (web, mobile, desktop)",
   "layout": {
     "shape": "rounded-rectangle",
+    "borderRadius": 22,
+    "borderWidth": 3,
+    "maxWidth": 430,
     "folds": 3,
+    "foldStates": ["folded", "half-folded", "unfolded"],
     "foldLines": "between major sections, not overlapping controls",
-    "patternScale": "coarse, 18px",
+    "patternScale": "12px tile, crosshatch at 6px intervals",
     "glassFields": true,
     "flap": {
+      "height": 44,
       "button": "skin cycle",
       "foldLine": "above button",
       "fadeLine": "below button"
     },
     "sections": [
-      "header (logo, title, subtitle, skin select)",
-      "hero (network, assets)",
-      "tabs and panels (create, connect, balance, sign, history)"
-    ]
+      "header (logo 130px centered, title, subtitle, runtime config 2-col grid)",
+      "hero (network + assets, 2-col cards with glass background)",
+      "tabs (horizontal scroll, uppercase, 0.72rem)",
+      "panels (create, connect, balance, sign, history)"
+    ],
+    "halves": {
+      "upper": "header + runtime config",
+      "lower": "hero + tabs + panels"
+    }
+  },
+  "foldBehavior": {
+    "foldedOverlay": "full-height overlay with logo 120px centered",
+    "halfFoldOverlay": "50% height, logo + network info bar at bottom",
+    "halfFoldInfoBar": "network · asset names, small muted text, bottom-aligned",
+    "autoHalfFold": "30 seconds of inactivity in unfolded state",
+    "logoClickUnfolded": "returns to half-fold state"
+  },
+  "embellishments": {
+    "stitches": {
+      "position": "top and bottom, 16px inset from edges",
+      "style": "2px dashed, themed stitch color"
+    },
+    "clips": {
+      "position": "left and right at 50% vertical",
+      "size": "10px × 44px",
+      "style": "metallic gradient (highlight → color → shadow)"
+    },
+    "crosshatch": {
+      "angle": "±45deg",
+      "spacing": "6px",
+      "width": "1px",
+      "opacity": "var(--checkered-opacity), 0.10–0.16 depending on theme"
+    },
+    "sheen": "radial gradient, soft-light blend, 30% top-left origin",
+    "edgePiping": "2px solid edge-color on fold overlay"
+  },
+  "formFields": {
+    "layout": "inline-row: 70px label column + 1fr input",
+    "labelStyle": "0.72rem uppercase 600 weight, muted color",
+    "inputStyle": "6px radius, glass background, 1px border, focus ring",
+    "buttonPrimary": "blue gradient, uppercase, hover lift + shadow deepen"
+  },
+  "typography": {
+    "fontFamily": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    "title": "0.88rem 700 weight",
+    "subtitle": "0.72rem 500 weight muted",
+    "body": "0.8rem",
+    "label": "0.72–0.75rem 600 weight uppercase",
+    "tab": "0.72rem 600 weight uppercase",
+    "hint": "0.72rem muted"
+  },
+  "themeTokens": {
+    "cssVariables": [
+      "--wallet-skin",
+      "--wallet-skin-size",
+      "--edge-color",
+      "--edge-color-soft",
+      "--glass-bg",
+      "--wallet-text",
+      "--wallet-text-muted",
+      "--wallet-accent",
+      "--stitch-color",
+      "--clip-highlight",
+      "--clip-color",
+      "--clip-shadow",
+      "--checkered-opacity"
+    ],
+    "darkThemeOverrides": "panels, tabs, inputs, hero cards, results use rgba(0,0,0,0.2–0.45) backgrounds with rgba(255,255,255,0.10–0.15) borders"
   },
   "themeFormat": "wallet-theme.template.json",
   "themes": [
     "classic",
     "dark",
-    "black"
+    "black",
+    "navy",
+    "forest"
   ],
-  "notes": "Fold lines use edge color, are slightly faded, and do not touch controls. Pattern, glass, and color tokens are reusable across platforms."
+  "notes": "Fold lines use edge color, are slightly faded, and do not touch controls. Pattern, glass, and color tokens are reusable across platforms. Dark themes require contrast overrides for all interactive elements."
 }

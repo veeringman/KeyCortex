@@ -8,6 +8,8 @@ use kc_storage::{AuditEventRecord, WalletBindingRecord};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+use std::sync::Arc;
+
 use crate::{AppState, ApiResult, bad_request, epoch_ms, internal_error, unauthorized};
 
 #[derive(Debug, Deserialize)]
@@ -24,7 +26,7 @@ pub(crate) struct OpsAuditResponse {
 }
 
 pub(crate) async fn ops_get_binding(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(wallet_address): Path<String>,
 ) -> ApiResult<WalletBindingRecord> {
@@ -69,7 +71,7 @@ pub(crate) async fn ops_get_binding(
 }
 
 pub(crate) async fn ops_list_audit(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<OpsAuditQuery>,
 ) -> ApiResult<OpsAuditResponse> {

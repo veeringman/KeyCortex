@@ -1,5 +1,7 @@
+mod chain_config;
 mod fortressdigital;
-use fortressdigital::{FortressDigitalContextPayload, generate_context_payload};
+mod proofcortex;
+use fortressdigital::{FortressDigitalContextPayload, generate_context_payload, build_wallet_status};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -10,8 +12,10 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jsonwebtoken::jwk::JwkSet;
 use kc_api_types::{
-    AssetSymbol, WalletBalanceResponse, WalletCreateResponse, WalletSignRequest,
-    WalletSignResponse, WalletSubmitResponse, WalletAddress,
+    AssetSymbol, FortressDigitalWalletStatusRequest, FortressDigitalWalletStatusResponse,
+    WalletBalanceResponse, WalletCreateRequest, WalletCreateResponse, WalletListResponse,
+    WalletRenameRequest, WalletRenameResponse, WalletRestoreRequest, WalletRestoreResponse,
+    WalletSignRequest, WalletSignResponse, WalletSubmitResponse, WalletSummary, WalletAddress,
 };
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
@@ -450,7 +454,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let status_snapshot = state
         .jwks_status
         .read()
@@ -514,7 +518,7 @@ async fn version() -> Json<VersionResponse> {
     })
 }
 
-async fn startupz(State(state): State<AppState>) -> Json<StartupDiagnosticsResponse> {
+async fn startupz(State(state): State<Arc<AppState>>) -> Json<StartupDiagnosticsResponse> {
     let status_snapshot = state
         .jwks_status
         .read()
@@ -571,7 +575,7 @@ async fn startupz(State(state): State<AppState>) -> Json<StartupDiagnosticsRespo
     })
 }
 
-async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
+async fn readyz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let keystore_ready = state
         .keystore
         .load_encrypted_key("__readiness_probe__")
@@ -659,8 +663,17 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-async fn wallet_create(State(state): State<AppState>) -> ApiResult<WalletCreateResponse> {
-    let signer = Ed25519Signer::new_random();
+async fn wallet_create(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WalletCreateRequest>,
+) -> ApiResult<WalletCreateResponse> {
+    let label = body.label.clone();
+    let passphrase = body.passphrase.clone();
+
+    let signer = match &passphrase {
+        Some(pp) if !pp.trim().is_empty() => Ed25519Signer::from_passphrase(pp),
+        _ => Ed25519Signer::new_random(),
+    };
     let wallet_address = signer.wallet_address();
     let public_key = signer.public_key_hex();
 
@@ -673,15 +686,144 @@ async fn wallet_create(State(state): State<AppState>) -> ApiResult<WalletCreateR
         .await
         .map_err(internal_error)?;
 
+    // Save label if provided
+    if let Some(lbl) = &label {
+        if !lbl.trim().is_empty() {
+            let _ = state.keystore.save_wallet_label(&wallet_address, lbl.trim());
+        }
+    }
+
     Ok(Json(WalletCreateResponse {
         wallet_address,
         public_key,
         chain: FLOWCORTEX_L1.to_owned(),
+        label,
+    }))
+}
+
+async fn wallet_list(State(state): State<Arc<AppState>>) -> ApiResult<WalletListResponse> {
+    let addresses = state
+        .keystore
+        .list_wallet_addresses()
+        .await
+        .map_err(internal_error)?;
+
+    let mut wallets = Vec::with_capacity(addresses.len());
+    for addr in &addresses {
+        // Check binding
+        let binding = state.keystore.load_wallet_binding(addr).ok().flatten();
+
+        // Recover public key from encrypted secret key
+        let pub_key = match state.keystore.load_encrypted_key(addr).await {
+            Ok(Some(encrypted)) => {
+                match decrypt_key_material(&encrypted, state.encryption_key.as_ref()) {
+                    Ok(secret_bytes) => {
+                        let signer = Ed25519Signer::from_secret_key_bytes(secret_bytes);
+                        Some(signer.public_key_hex())
+                    }
+                    Err(_) => None,
+                }
+            }
+            _ => None,
+        };
+
+        wallets.push(WalletSummary {
+            wallet_address: addr.clone(),
+            chain: FLOWCORTEX_L1.to_owned(),
+            bound_user_id: binding.map(|b| b.user_id),
+            public_key: pub_key,
+            label: state.keystore.load_wallet_label(addr).ok().flatten(),
+        });
+    }
+
+    let total = wallets.len();
+    Ok(Json(WalletListResponse { wallets, total }))
+}
+
+async fn wallet_restore(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<WalletRestoreRequest>,
+) -> ApiResult<WalletRestoreResponse> {
+    if request.passphrase.trim().is_empty() {
+        return Err(bad_request("passphrase is required"));
+    }
+
+    let signer = Ed25519Signer::from_passphrase(&request.passphrase);
+    let wallet_address = signer.wallet_address();
+    let public_key = signer.public_key_hex();
+
+    // Check if wallet already exists
+    let already_existed = state
+        .keystore
+        .load_encrypted_key(&wallet_address)
+        .await
+        .map_err(internal_error)?
+        .is_some();
+
+    if !already_existed {
+        let encrypted_key =
+            encrypt_key_material(&signer.secret_key_bytes(), state.encryption_key.as_ref())
+                .map_err(internal_error)?;
+        state
+            .keystore
+            .save_encrypted_key(&wallet_address, encrypted_key)
+            .await
+            .map_err(internal_error)?;
+    }
+
+    // Save/update label if provided
+    if let Some(lbl) = &request.label {
+        if !lbl.trim().is_empty() {
+            let _ = state.keystore.save_wallet_label(&wallet_address, lbl.trim());
+        }
+    }
+
+    let label = state.keystore.load_wallet_label(&wallet_address).ok().flatten();
+
+    Ok(Json(WalletRestoreResponse {
+        wallet_address,
+        public_key,
+        chain: FLOWCORTEX_L1.to_owned(),
+        label,
+        already_existed,
+    }))
+}
+
+async fn wallet_rename(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<WalletRenameRequest>,
+) -> ApiResult<WalletRenameResponse> {
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+    if request.label.trim().is_empty() {
+        return Err(bad_request("label is required"));
+    }
+
+    // Verify wallet exists
+    let exists = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .is_some();
+    if !exists {
+        return Err(bad_request("wallet not found"));
+    }
+
+    state
+        .keystore
+        .save_wallet_label(&request.wallet_address, request.label.trim())
+        .map_err(internal_error)?;
+
+    Ok(Json(WalletRenameResponse {
+        wallet_address: request.wallet_address,
+        label: request.label,
     }))
 }
 
 async fn wallet_sign(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<WalletSignRequest>,
 ) -> ApiResult<WalletSignResponse> {
     if request.wallet_address.trim().is_empty() {
@@ -829,12 +971,22 @@ async fn fetch_jwks_from_url(client: &reqwest::Client, url: &str) -> Result<JwkS
 }
 
 fn build_app(state: AppState) -> Router {
+    let shared_state = Arc::new(state);
+
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
     Router::new()
         .route("/health", get(health))
         .route("/readyz", get(readyz))
         .route("/startupz", get(startupz))
         .route("/version", get(version))
         .route("/wallet/create", post(wallet_create))
+        .route("/wallet/list", get(wallet_list))
+        .route("/wallet/restore", post(wallet_restore))
+        .route("/wallet/rename", post(wallet_rename))
         .route("/wallet/sign", post(wallet_sign))
         .route("/wallet/submit", post(submit::wallet_submit))
         .route("/wallet/nonce", get(submit::wallet_nonce))
@@ -846,7 +998,13 @@ fn build_app(state: AppState) -> Router {
         .route("/ops/bindings/{wallet_address}", get(ops::ops_get_binding))
         .route("/ops/audit", get(ops::ops_list_audit))
         .route("/fortressdigital/context", post(fortressdigital_payload))
-        .with_state(state);
+        .route("/fortressdigital/wallet-status", post(fortressdigital_wallet_status))
+        .route("/proofcortex/commitment", post(proofcortex::proofcortex_commitment))
+        .route("/chain/config", get(chain_config::chain_config))
+        .layer(cors)
+        .with_state(shared_state)
+}
+
 #[derive(Debug, Deserialize)]
 struct FortressDigitalPayloadRequest {
     wallet_address: String,
@@ -858,13 +1016,12 @@ struct FortressDigitalPayloadRequest {
 }
 
 async fn fortressdigital_payload(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<FortressDigitalPayloadRequest>,
 ) -> ApiResult<FortressDigitalContextPayload> {
     let issued_at_epoch_ms = epoch_ms().unwrap_or_default();
     let expires_at_epoch_ms = issued_at_epoch_ms + (request.expires_in_seconds.unwrap_or(600) as u128 * 1000);
-    // Assuming encryption_key is a base64 or hex string representing the secret key
-    let secret_key_bytes = base64::decode(&*state.encryption_key).unwrap_or_default();
+    let secret_key_bytes = STANDARD.decode(state.encryption_key.as_bytes()).unwrap_or_default();
     let signer = Ed25519Signer::from_secret_key_bytes(secret_key_bytes.try_into().unwrap_or([0u8; 32]));
     let payload = generate_context_payload(
         &request.wallet_address,
@@ -878,6 +1035,84 @@ async fn fortressdigital_payload(
     );
     Ok(Json(payload))
 }
+
+/// FortressDigital wallet verification status endpoint.
+///
+/// Returns enriched wallet signals for risk scoring and policy gating:
+///   - wallet existence + key type
+///   - binding status (bound to IdP user?)
+///   - last verification timestamp
+///   - signing frequency hint
+///   - risk signal flags
+async fn fortressdigital_wallet_status(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<FortressDigitalWalletStatusRequest>,
+) -> ApiResult<FortressDigitalWalletStatusResponse> {
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
+    let now = epoch_ms().map_err(internal_error)?;
+
+    let wallet_exists = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .is_some();
+
+    // Load binding from Postgres, fallback to RocksDB
+    let binding = if let Some(repo) = &state.postgres_repo {
+        match repo.load_wallet_binding(&request.wallet_address).await {
+            Ok(b) => b,
+            Err(_) => {
+                state.db_fallback_counters.inc_binding_read_failures();
+                state
+                    .keystore
+                    .load_wallet_binding(&request.wallet_address)
+                    .map_err(internal_error)?
+            }
+        }
+    } else {
+        state
+            .keystore
+            .load_wallet_binding(&request.wallet_address)
+            .map_err(internal_error)?
+    };
+
+    // Count recent audit events for signing frequency hint
+    let audit_count = state
+        .keystore
+        .list_audit_events(100, None, Some(&request.wallet_address), None)
+        .map_err(internal_error)?
+        .len();
+
+    let response = build_wallet_status(
+        &request.wallet_address,
+        &request.chain,
+        wallet_exists,
+        binding.as_ref(),
+        audit_count,
+        now,
+    );
+
+    // Audit this status query
+    auth::append_audit_event(
+        &state,
+        kc_storage::AuditEventRecord {
+            event_id: String::new(),
+            event_type: "fortressdigital_wallet_status".to_owned(),
+            wallet_address: Some(request.wallet_address.clone()),
+            user_id: request.user_id.clone(),
+            chain: Some(request.chain.clone()),
+            outcome: "success".to_owned(),
+            message: Some(format!("risk_signals={}", response.risk_signals.len())),
+            timestamp_epoch_ms: now,
+        },
+    )
+    .await;
+
+    Ok(Json(response))
 }
 
 #[cfg(test)]

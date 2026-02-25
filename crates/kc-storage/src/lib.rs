@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub trait Keystore: Send + Sync {
     async fn save_encrypted_key(&self, wallet_address: &str, encrypted_key: Vec<u8>) -> Result<()>;
     async fn load_encrypted_key(&self, wallet_address: &str) -> Result<Option<Vec<u8>>>;
+    async fn list_wallet_addresses(&self) -> Result<Vec<String>>;
 }
 
 #[derive(Default)]
@@ -24,6 +25,10 @@ impl Keystore for NoopKeystore {
 
     async fn load_encrypted_key(&self, _wallet_address: &str) -> Result<Option<Vec<u8>>> {
         Ok(None)
+    }
+
+    async fn list_wallet_addresses(&self) -> Result<Vec<String>> {
+        Ok(vec![])
     }
 }
 
@@ -43,6 +48,11 @@ impl Keystore for InMemoryKeystore {
     async fn load_encrypted_key(&self, wallet_address: &str) -> Result<Option<Vec<u8>>> {
         let guard = self.keys.read().await;
         Ok(guard.get(wallet_address).cloned())
+    }
+
+    async fn list_wallet_addresses(&self) -> Result<Vec<String>> {
+        let guard = self.keys.read().await;
+        Ok(guard.keys().cloned().collect())
     }
 }
 
@@ -129,6 +139,25 @@ impl RocksDbKeystore {
 
     fn key_for_submitted_tx(tx_hash: &str) -> String {
         format!("submitted-tx:{tx_hash}")
+    }
+
+    fn key_for_wallet_label(wallet_address: &str) -> String {
+        format!("wallet-label:{wallet_address}")
+    }
+
+    pub fn save_wallet_label(&self, wallet_address: &str, label: &str) -> Result<()> {
+        let key = Self::key_for_wallet_label(wallet_address);
+        self.db.put(key.as_bytes(), label.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn load_wallet_label(&self, wallet_address: &str) -> Result<Option<String>> {
+        let key = Self::key_for_wallet_label(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(String::from_utf8(raw)?)),
+            None => Ok(None),
+        }
     }
 
     pub fn save_wallet_binding(&self, record: &WalletBindingRecord) -> Result<()> {
@@ -264,5 +293,20 @@ impl Keystore for RocksDbKeystore {
         let key = Self::key_for_wallet(wallet_address);
         let value = self.db.get(key.as_bytes())?;
         Ok(value.map(|v| v.to_vec()))
+    }
+
+    async fn list_wallet_addresses(&self) -> Result<Vec<String>> {
+        let prefix = b"wallet-key:";
+        let mut addresses = Vec::new();
+        for entry in self.db.iterator(IteratorMode::Start) {
+            let (key, _) = entry?;
+            if key.as_ref().starts_with(prefix) {
+                if let Ok(k) = std::str::from_utf8(&key) {
+                    addresses.push(k.strip_prefix("wallet-key:").unwrap_or(k).to_owned());
+                }
+            }
+        }
+        addresses.sort();
+        Ok(addresses)
     }
 }

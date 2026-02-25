@@ -7,7 +7,12 @@
     "edge": "#8b5c2a",
     "glass": "rgba(255,255,255,0.18)",
     "text": "#2d1a0b",
-    "accent": "#e6c7a1"
+    "accent": "#e6c7a1",
+    "stitchColor": "rgba(216,185,143,0.55)",
+    "clipHighlight": "#e2e8f0",
+    "clipColor": "#c4a97d",
+    "clipShadow": "#8b6914",
+    "checkeredOpacity": "0.04"
   },
   "dark": {
     "name": "Dark Leather",
@@ -17,7 +22,12 @@
     "edge": "#5a3b23",
     "glass": "rgba(40,40,40,0.22)",
     "text": "#f5e9d6",
-    "accent": "#b97a56"
+    "accent": "#b97a56",
+    "stitchColor": "rgba(180,150,110,0.40)",
+    "clipHighlight": "#8b7355",
+    "clipColor": "#6d5c4a",
+    "clipShadow": "#3a2c23",
+    "checkeredOpacity": "0.05"
   },
   "black": {
     "name": "Black Edition",
@@ -27,6 +37,41 @@
     "edge": "#181818",
     "glass": "rgba(30,30,30,0.28)",
     "text": "#e0e0e0",
-    "accent": "#b97a56"
+    "accent": "#b97a56",
+    "stitchColor": "rgba(120,120,120,0.35)",
+    "clipHighlight": "#555555",
+    "clipColor": "#333333",
+    "clipShadow": "#1a1a1a",
+    "checkeredOpacity": "0.06"
+  },
+  "navy": {
+    "name": "Navy Executive",
+    "backgroundPattern": "assets/leather-pattern-dark.svg",
+    "primary": "#1a2744",
+    "secondary": "#2c3e5a",
+    "edge": "#0f1b33",
+    "glass": "rgba(15,27,51,0.25)",
+    "text": "#d6e4f5",
+    "accent": "#c9a84c",
+    "stitchColor": "rgba(160,180,210,0.40)",
+    "clipHighlight": "#6b82a8",
+    "clipColor": "#3d5478",
+    "clipShadow": "#142238",
+    "checkeredOpacity": "0.08"
+  },
+  "forest": {
+    "name": "Forest Heritage",
+    "backgroundPattern": "assets/leather-pattern-dark.svg",
+    "primary": "#1e3022",
+    "secondary": "#3a5a3e",
+    "edge": "#15261a",
+    "glass": "rgba(20,40,25,0.22)",
+    "text": "#d4e8d1",
+    "accent": "#c8a84e",
+    "stitchColor": "rgba(140,170,120,0.40)",
+    "clipHighlight": "#6a8a60",
+    "clipColor": "#3d5a3a",
+    "clipShadow": "#1a3018",
+    "checkeredOpacity": "0.09"
   }
 }

@@ -95,11 +95,11 @@ Phase: Foundation & Architecture
 - [ ] Web wallet baseline (Next.js)
 - [ ] Mobile bridge baseline (UniFFI generation)
 - [ ] Wallet UI screens:
-  - [ ] create/import wallet
-  - [ ] connect wallet (auth)
-  - [ ] view balance
-  - [ ] sign settlement transaction
-  - [ ] view tx history
+  - [x] create/import wallet
+  - [x] connect wallet (auth)
+  - [x] view balance
+  - [x] sign settlement transaction
+  - [x] view tx history
 - [ ] Ops/Auth console screens:
   - [ ] view wallet bindings
   - [ ] revoke binding
@@ -179,6 +179,7 @@ Phase: Foundation & Architecture
 - [x] Add operations troubleshooting section for fallback counter spikes
 - [x] Add compact operator dashboard spec for diagnostics endpoint fields
 - [x] Add alerting threshold recommendations for fallback counters
+- [x] Add premium wallet-shaped web UI baseline with functional create/connect/balance/sign/history screens
 
 ### Next Up
 
@@ -245,6 +246,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added feature-gated secp256k1 signing support in `kc-crypto` and zeroization hardening for decrypted key material across wallet/auth/submit flows.
 - 2026-02-25: Froze v0.1 wallet/auth API contracts in `KeyCortex_API_v0.1_Contract.md` and aligned auth verify response field naming (`verified_at_epoch_ms`) in architecture spec.
 - 2026-02-25: Added wallet/auth REST integration tests in `wallet-service` for create/sign, challenge/verify, bind auth, submit/nonce/tx-status contract coverage.
+- 2026-02-25: Added `ui/wallet-baseline` premium wallet-shaped web UI with tabbed screens for create/bind/balance/sign/tx lookup and wired live calls to wallet-service endpoints.
 
 ---
 

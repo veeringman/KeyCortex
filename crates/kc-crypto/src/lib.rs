@@ -51,6 +51,32 @@ impl Ed25519Signer {
         }
     }
 
+    /// Derive a deterministic Ed25519 keypair from a passphrase.
+    /// Uses domain-tagged PBKDF-style SHA-256 derivation (1000 rounds).
+    /// The same passphrase always produces the same wallet address.
+    pub fn from_passphrase(passphrase: &str) -> Self {
+        let mut seed = [0u8; 32];
+        // Initial hash: domain-tagged passphrase
+        let mut hasher = Sha256::new();
+        hasher.update(b"keycortex:wallet-derive:v1:");
+        hasher.update(passphrase.as_bytes());
+        let digest = hasher.finalize();
+        seed.copy_from_slice(&digest);
+
+        // Stretch with 1000 rounds
+        for _ in 0..1000 {
+            let mut h = Sha256::new();
+            h.update(b"keycortex:stretch:");
+            h.update(seed);
+            let d = h.finalize();
+            seed.copy_from_slice(&d);
+        }
+
+        let signing_key = SigningKey::from_bytes(&seed);
+        seed.zeroize();
+        Self { signing_key }
+    }
+
     pub fn verify(&self, payload: &[u8], purpose: SignPurpose, signature: &[u8]) -> Result<bool> {
         if payload.is_empty() {
             return Err(anyhow!("payload cannot be empty"));

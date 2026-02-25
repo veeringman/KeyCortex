@@ -7,9 +7,23 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="wallet-window" role="application" aria-label="KeyCortex wallet window">
+    <div class="wallet-centerer">
+      <main class="wallet-window" role="application" aria-label="KeyCortex wallet window">
+      <!-- Wallet aesthetic elements -->
+      <div class="wallet-stitch-top" aria-hidden="true"></div>
+      <div class="wallet-stitch-bottom" aria-hidden="true"></div>
+      <div class="wallet-clip-left" aria-hidden="true"></div>
+      <div class="wallet-clip-right" aria-hidden="true"></div>
+      <div class="wallet-folded" id="walletFolded">
+        <button id="walletFoldToggle" class="wallet-fold-toggle" aria-label="Open wallet">
+          <img src="./keycortex_logo.png" alt="Open Wallet" class="fold-logo" />
+        </button>
+        <div class="half-fold-info" id="halfFoldInfo">
+          <span id="halfFoldWalletName">—</span> &nbsp;·&nbsp; <span id="halfFoldChain">flowcortex-l1</span>
+        </div>
+      </div>
       <div class="wallet-flap" aria-hidden="true">
-          <div class="fold-line" aria-hidden="true"></div>
+        <div class="fold-line" aria-hidden="true"></div>
         <button
           id="skinCycleBtn"
           class="skin-cycle-btn"
@@ -17,102 +31,134 @@
           aria-label="Cycle wallet skin"
           title="Switch wallet skin"
         >
-          ◌
+          ○
         </button>
         <div class="fold-fade" aria-hidden="true"></div>
       </div>
-      <div class="app">
+      <div class="app" id="walletApp">
+      <div class="wallet-upper-half">
       <header class="header">
         <img
           class="brand-logo"
-          src="../../keycortex_logo.png"
+          src="./keycortex_logo.png"
           alt="KeyCortex logo"
         />
-        <h1 class="wallet-title">Secure Digital wallet</h1>
-        <p class="subtitle">Secure signing + auth binding for FlowCortex L1</p>
+        <div class="header-text">
+          <h1 class="wallet-title">Secure Digital Wallet</h1>
+          <p class="subtitle">Signing &amp; auth binding · FlowCortex L1</p>
+        </div>
         <div class="runtime">
-          <label for="baseUrl">API Base URL</label>
-          <input id="baseUrl" value="http://127.0.0.1:8080" />
-          <label for="skinSelect">Wallet Skin</label>
+          <label for="baseUrl">API Base</label>
+          <input id="baseUrl" value="" />
+          <label for="skinSelect">Skin</label>
           <select id="skinSelect">
             <option value="classic">Classic</option>
             <option value="dark">Dark Brown</option>
             <option value="black">Black</option>
+            <option value="navy">Navy Executive</option>
+            <option value="forest">Forest Heritage</option>
           </select>
         </div>
       </header>
+      </div>
 
-      <div class="wallet-fold-line" aria-hidden="true"></div>
-
-      <div class="wallet-fold-line" aria-hidden="true"></div>
+      <div class="wallet-lower-half">
 
       <section class="hero">
-        <div>
-          <strong>Network</strong>
-          <span>flowcortex-l1</span>
+        <div class="hero-identity">
+          <strong>Profile</strong>
+          <select id="profileSelect">
+            <option value="">— select profile —</option>
+          </select>
+          <button id="addProfileBtn" class="icon-btn" title="Add profile">＋</button>
         </div>
-        <div>
-          <strong>Assets</strong>
-          <span>PROOF · FloweR</span>
+        <div class="hero-wallet-selector">
+          <strong>Active Wallet</strong>
+          <select id="activeWalletSelect">
+            <option value="">— no wallets —</option>
+          </select>
         </div>
       </section>
-
-      <div class="wallet-fold-line" aria-hidden="true"></div>
 
       <div class="wallet-fold-line" aria-hidden="true"></div>
 
       <nav class="tabs" aria-label="Wallet Screens">
-        <button data-tab="create" class="tab active">Create</button>
+        <button data-tab="wallets" class="tab active">Wallets</button>
         <button data-tab="connect" class="tab">Connect</button>
         <button data-tab="balance" class="tab">Balance</button>
         <button data-tab="sign" class="tab">Sign</button>
-        <button data-tab="history" class="tab">History</button>
+        <button data-tab="transfer" class="tab">Transfer</button>
+        <button data-tab="history" class="tab">Tx Lookup</button>
+        <button data-tab="platform" class="tab">Platform</button>
       </nav>
 
-      <section id="create" class="panel active">
-        <h2>Create Wallet</h2>
-        <button id="createWalletBtn" class="primary">Create Wallet</button>
+      <section id="wallets" class="panel active">
+        <h2>My Wallets</h2>
+        <p class="panel-hint">All wallets managed by this instance. Tap a wallet to make it active.</p>
+        <div id="walletListContainer" class="wallet-list"></div>
+        <div class="wallet-create-form">
+          <div class="row inline-row">
+            <label for="walletLabelInput">Name</label>
+            <input id="walletLabelInput" placeholder="e.g. Treasury, Savings..." />
+          </div>
+          <div class="row inline-row">
+            <label for="walletPassphraseInput">Passphrase</label>
+            <input id="walletPassphraseInput" type="password" placeholder="optional — for recovery" />
+          </div>
+          <div class="button-row" style="margin-top:10px">
+            <button id="createWalletBtn" class="primary">＋ New Wallet</button>
+            <button id="restoreWalletBtn" class="secondary">↻ Restore</button>
+            <button id="refreshWalletsBtn" class="secondary">↻ Refresh</button>
+          </div>
+          <p class="form-hint" id="restoreHint" style="display:none"></p>
+        </div>
+
         <pre id="createResult" class="result"></pre>
       </section>
 
       <section id="connect" class="panel">
-        <h2>Connect Wallet (Bind)</h2>
-        <div class="row">
-          <label for="connectWalletAddress">Wallet Address</label>
+        <h2>Connect Wallet</h2>
+        <p class="panel-hint">1. Get a challenge 2. Sign &amp; verify 3. Bind</p>
+        <div class="row inline-row">
+          <label for="connectWalletAddress">Address</label>
           <input id="connectWalletAddress" placeholder="0x..." />
         </div>
-        <div class="row">
+        <div class="row inline-row">
           <label for="connectChain">Chain</label>
           <input id="connectChain" value="flowcortex-l1" />
         </div>
-        <div class="row">
-          <label for="connectToken">Bearer Token</label>
+        <div class="row inline-row">
+          <label for="connectToken">Token</label>
           <input id="connectToken" placeholder="eyJ..." />
         </div>
-        <button id="bindWalletBtn" class="primary">Bind Wallet</button>
+        <div class="button-row">
+          <button id="challengeBtn" class="secondary">1. Challenge</button>
+          <button id="verifyBtn" class="secondary">2. Verify</button>
+          <button id="bindWalletBtn" class="primary">3. Bind</button>
+        </div>
         <pre id="connectResult" class="result"></pre>
       </section>
 
       <section id="balance" class="panel">
         <h2>Get Balance</h2>
-        <div class="row">
-          <label for="balanceWalletAddress">Wallet Address</label>
+        <div class="row inline-row">
+          <label for="balanceWalletAddress">Address</label>
           <input id="balanceWalletAddress" placeholder="0x..." />
         </div>
-        <div class="row">
+        <div class="row inline-row">
           <label for="balanceChain">Chain</label>
           <input id="balanceChain" value="flowcortex-l1" />
         </div>
-        <div class="row visuals">
-          <img id="balanceNetworkIcon" alt="Network icon" />
-          <img id="balanceCoinIcon" alt="Asset icon" />
-        </div>
-        <div class="row">
+        <div class="row inline-row">
           <label for="balanceAsset">Asset</label>
           <select id="balanceAsset">
             <option value="PROOF">PROOF</option>
             <option value="FloweR">FloweR</option>
           </select>
+        </div>
+        <div class="row visuals">
+          <img id="balanceNetworkIcon" alt="Network icon" />
+          <img id="balanceCoinIcon" alt="Asset icon" />
         </div>
         <button id="balanceBtn" class="primary">Fetch Balance</button>
         <pre id="balanceResult" class="result"></pre>
@@ -120,11 +166,11 @@
 
       <section id="sign" class="panel">
         <h2>Sign Payload</h2>
-        <div class="row">
-          <label for="signWalletAddress">Wallet Address</label>
+        <div class="row inline-row">
+          <label for="signWalletAddress">Address</label>
           <input id="signWalletAddress" placeholder="0x..." />
         </div>
-        <div class="row">
+        <div class="row inline-row">
           <label for="signPurpose">Purpose</label>
           <select id="signPurpose">
             <option value="transaction">transaction</option>
@@ -133,24 +179,109 @@
           </select>
         </div>
         <div class="row">
-          <label for="signPayload">Payload (plain text)</label>
-          <textarea id="signPayload" rows="5" placeholder="message to sign"></textarea>
+          <label for="signPayload">Payload</label>
+          <textarea id="signPayload" rows="3" placeholder="message to sign"></textarea>
         </div>
         <button id="signBtn" class="primary">Sign</button>
         <pre id="signResult" class="result"></pre>
       </section>
 
+      <section id="transfer" class="panel">
+        <h2>Submit Transaction</h2>
+        <div class="row inline-row">
+          <label for="submitFrom">From</label>
+          <input id="submitFrom" placeholder="0x..." />
+        </div>
+        <div class="row inline-row">
+          <label for="submitTo">To</label>
+          <input id="submitTo" placeholder="0x..." />
+        </div>
+        <div class="row inline-row">
+          <label for="submitAmount">Amount</label>
+          <input id="submitAmount" placeholder="1000" />
+        </div>
+        <div class="row inline-row">
+          <label for="submitAsset">Asset</label>
+          <select id="submitAsset">
+            <option value="PROOF">PROOF</option>
+            <option value="FloweR">FloweR</option>
+          </select>
+        </div>
+        <div class="row inline-row">
+          <label for="submitChain">Chain</label>
+          <input id="submitChain" value="flowcortex-l1" />
+        </div>
+        <div class="nonce-row">
+          <button id="nonceBtn" class="secondary">Get Nonce</button>
+          <span id="nonceDisplay" class="nonce-value">—</span>
+          <input id="submitNonce" type="number" min="1" placeholder="nonce" />
+        </div>
+        <button id="submitTxBtn" class="primary">Submit Tx</button>
+        <pre id="submitResult" class="result"></pre>
+      </section>
+
       <section id="history" class="panel">
-        <h2>Transaction History (Lookup)</h2>
-        <div class="row">
+        <h2>Tx Lookup</h2>
+        <div class="row inline-row">
           <label for="txHash">Tx Hash</label>
           <input id="txHash" placeholder="pending-integration" />
         </div>
-        <button id="txStatusBtn" class="primary">Fetch Tx Status</button>
+        <button id="txStatusBtn" class="primary">Fetch Status</button>
         <pre id="historyResult" class="result"></pre>
       </section>
+
+      <section id="platform" class="panel">
+        <h2>Platform Integration</h2>
+        <p class="panel-hint">Treasury · FortressDigital · FlowCortex · ProofCortex · AuthBuddy</p>
+
+        <div class="platform-group">
+          <h3>Chain Config <span class="platform-badge">FlowCortex</span></h3>
+          <button id="chainConfigBtn" class="secondary">Load Chain Config</button>
+          <pre id="chainConfigResult" class="result"></pre>
+        </div>
+
+        <div class="platform-group">
+          <h3>Wallet Status <span class="platform-badge">FortressDigital</span></h3>
+          <div class="row inline-row">
+            <label for="fdWalletAddress">Address</label>
+            <input id="fdWalletAddress" placeholder="0x..." />
+          </div>
+          <button id="walletStatusBtn" class="secondary">Check Status</button>
+          <pre id="walletStatusResult" class="result"></pre>
+        </div>
+
+        <div class="platform-group">
+          <h3>Commitment <span class="platform-badge">ProofCortex</span></h3>
+          <div class="row inline-row">
+            <label for="pcWalletAddress">Address</label>
+            <input id="pcWalletAddress" placeholder="0x..." />
+          </div>
+          <div class="row inline-row">
+            <label for="pcChallenge">Challenge</label>
+            <input id="pcChallenge" placeholder="challenge-uuid" />
+          </div>
+          <div class="row inline-row">
+            <label for="pcTxHash">Tx Hash</label>
+            <input id="pcTxHash" placeholder="(optional)" />
+          </div>
+          <button id="commitmentBtn" class="secondary">Generate Commitment</button>
+          <pre id="commitmentResult" class="result"></pre>
+        </div>
+
+        <div class="platform-group">
+          <h3>Service Health <span class="platform-badge">Ops</span></h3>
+          <div class="button-row">
+            <button id="healthBtn" class="secondary">Health</button>
+            <button id="readyzBtn" class="secondary">Ready</button>
+            <button id="startupzBtn" class="secondary">Startup</button>
+          </div>
+          <pre id="opsResult" class="result"></pre>
+        </div>
+      </section>
       </div>
-    </main>
+      </div>
+      </main>
+    </div>
 
     <script src="./app.js" defer></script>
   </body>

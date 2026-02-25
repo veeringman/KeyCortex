@@ -8,7 +8,15 @@
     "edge": "${edge}",
     "glass": "${glass}",
     "text": "${text}",
+    "textMuted": "${textMuted}",
     "accent": "${accent}"
+  },
+  "embellishments": {
+    "stitchColor": "${stitchColor}",
+    "clipHighlight": "${clipHighlight}",
+    "clipColor": "${clipColor}",
+    "clipShadow": "${clipShadow}",
+    "checkeredOpacity": "${checkeredOpacity}"
   },
   "description": "Standard wallet theme template for cross-platform UI (web, mobile, desktop). Replace variables with actual values for each skin."
 }

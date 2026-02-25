@@ -14,6 +14,8 @@ use kc_storage::{Keystore, SubmitIdempotencyRecord, SubmittedTxRecord, WalletNon
 use serde::Deserialize;
 use tracing::warn;
 
+use std::sync::Arc;
+
 use crate::{AppState, ApiResult, bad_request, epoch_ms, internal_error, to_hex};
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +24,7 @@ pub(crate) struct WalletNonceQuery {
 }
 
 pub(crate) async fn wallet_nonce(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<WalletNonceQuery>,
 ) -> ApiResult<WalletNonceResponse> {
     if query.wallet_address.trim().is_empty() {
@@ -55,7 +57,7 @@ pub(crate) async fn wallet_nonce(
 }
 
 pub(crate) async fn wallet_submit(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<WalletSubmitRequest>,
 ) -> ApiResult<WalletSubmitResponse> {
@@ -225,7 +227,7 @@ pub(crate) async fn wallet_submit(
 }
 
 pub(crate) async fn wallet_tx_status(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Path(tx_hash): Path<String>,
 ) -> ApiResult<WalletTxStatusResponse> {
     if tx_hash.trim().is_empty() {

@@ -50,10 +50,12 @@ use kc_chain_flowcortex::FLOWCORTEX_L1;
 use kc_crypto::{Ed25519Signer, decrypt_key_material};
 use kc_storage::{AuditEventRecord, Keystore, WalletBindingRecord};
 use serde::Deserialize;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::warn;
+use uuid::Uuid;
 
-use crate::{AppState, ApiResult, bad_request, epoch_ms, from_hex, internal_error, unauthorized};
+use crate::{AppState, ApiResult, ChallengeRecord, bad_request, epoch_ms, from_hex, internal_error, unauthorized};
 
 #[derive(Debug, Deserialize)]
 struct AuthBuddyClaims {
@@ -72,23 +74,56 @@ pub(crate) struct AuthPrincipal {
 }
 
 
+pub(crate) async fn auth_challenge(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<AuthChallengeResponse> {
+    let now = epoch_ms().map_err(internal_error)?;
+    let challenge = Uuid::new_v4().to_string();
+    let expires_in: u64 = 300; // 5 minutes
+    let expires_at = now + (expires_in as u128 * 1000);
+
+    let record = ChallengeRecord {
+        issued_at_epoch_ms: now,
+        expires_at_epoch_ms: expires_at,
+        used: false,
+        used_at_epoch_ms: None,
+    };
+
+    {
+        let mut store = state.challenge_store.write().await;
+        store.insert(challenge.clone(), record);
+    }
+
+    if let Some(repo) = &state.postgres_repo {
+        if let Err(err) = repo.upsert_challenge(&challenge, now, expires_at).await {
+            state.db_fallback_counters.inc_challenge_persist_failures();
+            warn!("failed to persist challenge in Postgres: {}", err);
+        }
+    }
+
+    Ok(Json(AuthChallengeResponse {
+        challenge,
+        expires_in,
+    }))
+}
+
 pub(crate) async fn auth_verify(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Json(request): Json<AuthVerifyRequest>,
-) -> Result<Json<AuthVerifyResponse>, StatusCode> {
+) -> ApiResult<AuthVerifyResponse> {
     if request.wallet_address.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("wallet_address is required"));
     }
 
     if request.challenge.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("challenge is required"));
     }
 
     if request.signature.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("signature is required"));
     }
 
-    let now = epoch_ms().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let now = epoch_ms().map_err(internal_error)?;
 
     {
         let mut store = state.challenge_store.write().await;
@@ -120,21 +155,21 @@ pub(crate) async fn auth_verify(
         .keystore
         .load_encrypted_key(&request.wallet_address)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or_else(|| StatusCode::BAD_REQUEST)?;
+        .map_err(internal_error)?
+        .ok_or_else(|| bad_request("wallet not found"))?;
 
     let mut secret_key = decrypt_key_material(&encrypted_key, state.encryption_key.as_ref())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(internal_error)?;
 
     let signer = Ed25519Signer::from_secret_key_bytes(secret_key);
     secret_key.fill(0);
     let derived_wallet_address = signer.wallet_address();
     if derived_wallet_address != request.wallet_address {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("wallet address mismatch"));
     }
 
     let signature_bytes = from_hex(&request.signature)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        .map_err(|e| bad_request(&format!("invalid signature hex: {e}")))?;
 
     let valid = signer
         .verify(
@@ -142,7 +177,7 @@ pub(crate) async fn auth_verify(
             kc_api_types::SignPurpose::Auth,
             &signature_bytes,
         )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(internal_error)?;
 
     if let Some(repo) = &state.postgres_repo {
         if let Err(err) = repo.mark_challenge_used(&request.challenge, now).await {
@@ -159,23 +194,23 @@ pub(crate) async fn auth_verify(
 }
 
 pub(crate) async fn auth_bind(
-    State(state): State<AppState>,
-    // Removed incomplete function signature and callback logic; ensure callback logic is inside the correct function below.
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<AuthBindRequest>,
 ) -> ApiResult<AuthBindResponse> {
-    let now = epoch_ms().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let now = epoch_ms().map_err(internal_error)?;
 
-    let principal = AuthPrincipal {
-        user_id: "dummy_user".to_string(),
-        roles: vec![],
+    let principal = match parse_authbuddy_principal(&headers, &state) {
+        Ok(p) => p,
+        Err(msg) => return Err(unauthorized(&msg)),
     };
 
     if request.wallet_address.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("wallet_address is required"));
     }
 
     if request.chain != FLOWCORTEX_L1 {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("unsupported chain; only flowcortex-l1 is supported"));
     }
 
     let user_id = principal.user_id;
@@ -184,10 +219,10 @@ pub(crate) async fn auth_bind(
         .keystore
         .load_encrypted_key(&request.wallet_address)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(internal_error)?
         .is_some();
     if !wallet_exists {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(bad_request("wallet not found"));
     }
 
     let binding = WalletBindingRecord {
@@ -200,7 +235,7 @@ pub(crate) async fn auth_bind(
     state
         .keystore
         .save_wallet_binding(&binding)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(internal_error)?;
 
     if let Some(repo) = &state.postgres_repo {
         if let Err(err) = repo.save_wallet_binding(&binding).await {

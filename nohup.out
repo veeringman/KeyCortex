@@ -1,0 +1,44 @@
+warning: unused import: `FortressDigitalWalletStatusRequest`
+ --> services/wallet-service/src/fortressdigital.rs:4:5
+  |
+4 |     FortressDigitalWalletStatusRequest, FortressDigitalWalletStatusResponse,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `axum::http::StatusCode`
+  --> services/wallet-service/src/auth.rs:46:5
+   |
+46 | use axum::http::StatusCode;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `url`
+  --> services/wallet-service/src/auth.rs:25:21
+   |
+25 |         if let Some(url) = &self.url {
+   |                     ^^^ help: if this is intentional, prefix it with an underscore: `_url`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `issued_at_epoch_ms` is never read
+   --> services/wallet-service/src/main.rs:205:16
+    |
+204 | pub(crate) struct ChallengeRecord {
+    |                   --------------- field in this struct
+205 |     pub(crate) issued_at_epoch_ms: u128,
+    |                ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `ChallengeRecord` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `callback_url` is never used
+  --> services/wallet-service/src/auth.rs:12:8
+   |
+11 | pub trait AuthBuddyCallback: Send + Sync {
+   |           ----------------- method in this trait
+12 |     fn callback_url(&self) -> Option<&str>;
+   |        ^^^^^^^^^^^^
+
+warning: `wallet-service` (bin "wallet-service") generated 5 warnings (run `cargo fix --bin "wallet-service" -p wallet-service` to apply 3 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.69s
+     Running `target/debug/wallet-service`

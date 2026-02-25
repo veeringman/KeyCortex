@@ -10,6 +10,28 @@ This folder contains shared UI placeholder assets for networks and coins.
 - Keep a stable path contract so final uploaded brand icons can replace placeholders later.
 - Keep one centralized icon manifest for desktop, web, and mobile rendering parity.
 
+## Wallet Baseline UI
+
+- Path: `ui/wallet-baseline/`
+- Entry: `ui/wallet-baseline/index.html`
+- Script: `ui/wallet-baseline/app.js`
+
+This baseline web UI provides five wallet screens:
+
+- create/import wallet
+- connect wallet (auth bind)
+- view balance
+- sign payload
+- view tx history (tx status lookup)
+
+Run locally from repo root:
+
+```bash
+python3 -m http.server 4173
+```
+
+Then open `http://127.0.0.1:4173/ui/wallet-baseline/`.
+
 ## Canonical Manifest
 
 - Path: `ui/config/icon-manifest.json`

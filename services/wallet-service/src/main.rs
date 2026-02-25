@@ -127,6 +127,7 @@ struct AppState {
     authbuddy_expected_issuer: Option<Arc<str>>,
     authbuddy_expected_audience: Option<Arc<str>>,
     challenge_store: Arc<TokioRwLock<HashMap<String, ChallengeRecord>>>,
+    submit_idempotency_cache: Arc<TokioRwLock<HashMap<String, WalletSubmitResponse>>>,
 }
 
 #[tokio::main]
@@ -197,6 +198,7 @@ async fn main() -> anyhow::Result<()> {
             .filter(|value| !value.trim().is_empty())
             .map(Arc::<str>::from),
         challenge_store: Arc::new(TokioRwLock::new(HashMap::new())),
+        submit_idempotency_cache: Arc::new(TokioRwLock::new(HashMap::new())),
     };
 
     if authbuddy_jwks_url.is_some() || authbuddy_jwks_path.is_some() {
@@ -498,8 +500,23 @@ async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<Wa
 
 async fn wallet_submit(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<WalletSubmitRequest>,
 ) -> ApiResult<WalletSubmitResponse> {
+    let idempotency_key = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    if let Some(key) = idempotency_key.as_deref() {
+        let cache = state.submit_idempotency_cache.read().await;
+        if let Some(existing) = cache.get(key) {
+            return Ok(Json(existing.clone()));
+        }
+    }
+
     if request.from.trim().is_empty() {
         return Err(bad_request("from is required"));
     }
@@ -554,11 +571,18 @@ async fn wallet_submit(
         .await
         .map_err(internal_error)?;
 
-    Ok(Json(WalletSubmitResponse {
+    let response = WalletSubmitResponse {
         accepted: result.accepted,
         tx_hash: result.tx_hash,
         signature: signature_hex,
-    }))
+    };
+
+    if let Some(key) = idempotency_key {
+        let mut cache = state.submit_idempotency_cache.write().await;
+        cache.insert(key, response.clone());
+    }
+
+    Ok(Json(response))
 }
 
 async fn auth_challenge(State(state): State<AppState>) -> Json<AuthChallengeResponse> {

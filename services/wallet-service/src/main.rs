@@ -16,11 +16,13 @@ use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
 use kc_storage::{Keystore, RocksDbKeystore};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 use tracing::info;
 
 #[derive(Debug, Serialize)]
@@ -49,10 +51,19 @@ struct WalletBalanceQuery {
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
+#[derive(Debug, Clone)]
+struct ChallengeRecord {
+    issued_at_epoch_ms: u128,
+    expires_at_epoch_ms: u128,
+    used: bool,
+    used_at_epoch_ms: Option<u128>,
+}
+
 #[derive(Clone)]
 struct AppState {
     keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
+    challenge_store: Arc<RwLock<HashMap<String, ChallengeRecord>>>,
 }
 
 #[tokio::main]
@@ -72,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         keystore: Arc::new(keystore),
         encryption_key: Arc::<str>::from("keycortex-dev-master-key"),
+        challenge_store: Arc::new(RwLock::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -194,18 +206,64 @@ async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<Wa
     }))
 }
 
-async fn auth_challenge() -> Json<AuthChallengeResponse> {
+async fn auth_challenge(State(state): State<AppState>) -> Json<AuthChallengeResponse> {
     let challenge = issue_challenge(120);
+    let now = epoch_ms().unwrap_or_default();
+    let expires_at_epoch_ms = now + (challenge.expires_in_seconds as u128 * 1000);
+
+    let mut store = state.challenge_store.write().await;
+    store.retain(|_, record| !record.used && record.expires_at_epoch_ms > now);
+    store.insert(
+        challenge.challenge.clone(),
+        ChallengeRecord {
+            issued_at_epoch_ms: now,
+            expires_at_epoch_ms,
+            used: false,
+            used_at_epoch_ms: None,
+        },
+    );
+
     Json(challenge_response(&challenge))
 }
 
-async fn auth_verify(Json(request): Json<AuthVerifyRequest>) -> ApiResult<AuthVerifyResponse> {
+async fn auth_verify(
+    State(state): State<AppState>,
+    Json(request): Json<AuthVerifyRequest>,
+) -> ApiResult<AuthVerifyResponse> {
+    let now = epoch_ms().map_err(internal_error)?;
+
+    {
+        let mut store = state.challenge_store.write().await;
+        let record = store
+            .get_mut(&request.challenge)
+            .ok_or_else(|| bad_request("challenge not found"))?;
+
+        if record.used {
+            return Err(bad_request("challenge already used"));
+        }
+
+        if now > record.expires_at_epoch_ms {
+            record.used = true;
+            record.used_at_epoch_ms = Some(now);
+            return Err(bad_request("challenge expired"));
+        }
+    }
+
     let response = verify_signature_placeholder(
         &request.wallet_address,
         &request.challenge,
         &request.signature,
     )
     .map_err(internal_error)?;
+
+    if response.valid {
+        let mut store = state.challenge_store.write().await;
+        if let Some(record) = store.get_mut(&request.challenge) {
+            let _challenge_age_ms = now.saturating_sub(record.issued_at_epoch_ms);
+            record.used = true;
+            record.used_at_epoch_ms = Some(now);
+        }
+    }
 
     Ok(Json(response))
 }

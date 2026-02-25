@@ -60,10 +60,10 @@ Phase: Foundation & Architecture
 
 ### D) Auth Adapter Flow
 
-- [ ] Implement `POST /auth/challenge` (nonce + TTL + single use)
-- [ ] Implement `POST /auth/verify` (signature validation)
+- [x] Implement `POST /auth/challenge` (nonce + TTL + single use)
+- [x] Implement `POST /auth/verify` (signature validation)
 - [ ] Implement `POST /auth/bind` (IdP token-based wallet-user binding)
-- [ ] Persist challenge lifecycle (`issued`, `used`, `expired`)
+- [x] Persist challenge lifecycle (`issued`, `used`, `expired`) (in-service store)
 - [ ] Persist wallet binding audit log
 
 ### E) Chain Integration (MVP)
@@ -138,12 +138,13 @@ Phase: Foundation & Architecture
 - [x] Replace placeholder signing with real Ed25519 signing in wallet-service
 - [x] Add per-wallet encrypted key custody for create/sign flow
 - [x] Replace in-memory keystore with RocksDB-backed persistence
+- [x] Add auth challenge TTL + one-time-use enforcement
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
-- [ ] Implement challenge issuance, verify, and bind endpoint contracts
-- [ ] Add challenge persistence with TTL and one-time-use enforcement
+- [ ] Implement production-grade signature verification in `/auth/verify`
+- [ ] Implement IdP-backed `/auth/bind` persistence and audit logging
 
 ### Blockers
 
@@ -163,6 +164,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added per-wallet encrypted key custody in `wallet-service`; `/wallet/create` stores encrypted private key material and `/wallet/sign` requires `wallet_address` to sign with that wallet key.
 - 2026-02-25: Migrated MVP chain references from `flowcortex-l0` to `flowcortex-l1` across code, config, and docs; added FlowCortex-facing L1 change request parameter document.
 - 2026-02-25: Replaced in-memory keystore with RocksDB-backed persistence and added `KEYCORTEX_KEYSTORE_PATH` runtime path configuration.
+- 2026-02-25: Added challenge store lifecycle controls (`issued`, `used`, `expired`) with TTL and one-time-use enforcement for `/auth/challenge` and `/auth/verify`.
 
 ---
 

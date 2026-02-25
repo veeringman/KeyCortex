@@ -1,7 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use kc_api_types::{AssetSymbol, ChainId, WalletAddress};
-use kc_chain_client::{BalanceResult, ChainAdapter, SubmitTxRequest, SubmitTxResult};
+use kc_chain_client::{
+    BalanceResult, ChainAdapter, SubmitTxRequest, SubmitTxResult, TxStatusRequest, TxStatusResult,
+};
 
 pub const FLOWCORTEX_L1: &str = "flowcortex-l1";
 
@@ -26,6 +28,23 @@ impl ChainAdapter for FlowCortexAdapter {
     async fn submit_transaction(&self, _req: SubmitTxRequest) -> Result<SubmitTxResult> {
         Ok(SubmitTxResult {
             tx_hash: "pending-integration".to_owned(),
+            accepted: true,
+        })
+    }
+
+    async fn get_transaction_status(&self, req: TxStatusRequest) -> Result<TxStatusResult> {
+        let _chain = req.chain;
+
+        let status = if req.tx_hash == "pending-integration" {
+            "submitted"
+        } else {
+            "confirmed"
+        }
+        .to_owned();
+
+        Ok(TxStatusResult {
+            tx_hash: req.tx_hash,
+            status,
             accepted: true,
         })
     }

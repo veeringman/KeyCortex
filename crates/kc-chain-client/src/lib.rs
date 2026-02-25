@@ -28,11 +28,25 @@ pub struct SubmitTxResult {
     pub accepted: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct TxStatusRequest {
+    pub tx_hash: String,
+    pub chain: ChainId,
+}
+
+#[derive(Debug, Clone)]
+pub struct TxStatusResult {
+    pub tx_hash: String,
+    pub status: String,
+    pub accepted: bool,
+}
+
 #[async_trait]
 pub trait ChainAdapter: Send + Sync {
     fn chain_id(&self) -> &str;
     async fn get_balance(&self, wallet_address: &WalletAddress, asset: &AssetSymbol) -> Result<BalanceResult>;
     async fn submit_transaction(&self, req: SubmitTxRequest) -> Result<SubmitTxResult>;
+    async fn get_transaction_status(&self, req: TxStatusRequest) -> Result<TxStatusResult>;
 }
 
 #[derive(Default)]

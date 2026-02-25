@@ -70,6 +70,35 @@ pub struct AuditEventRecord {
     pub timestamp_epoch_ms: u128,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmitIdempotencyRecord {
+    pub idempotency_key: String,
+    pub accepted: bool,
+    pub tx_hash: String,
+    pub signature: String,
+    pub created_at_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletNonceRecord {
+    pub wallet_address: String,
+    pub last_nonce: u64,
+    pub updated_at_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmittedTxRecord {
+    pub tx_hash: String,
+    pub status: String,
+    pub accepted: bool,
+    pub chain: String,
+    pub from: String,
+    pub to: String,
+    pub asset: String,
+    pub amount: String,
+    pub submitted_at_epoch_ms: u128,
+}
+
 impl RocksDbKeystore {
     pub fn open_default(path: &str) -> Result<Self> {
         let mut options = Options::default();
@@ -88,6 +117,18 @@ impl RocksDbKeystore {
 
     fn key_for_audit_event(timestamp_epoch_ms: u128, event_id: &str) -> String {
         format!("audit:{timestamp_epoch_ms}:{event_id}")
+    }
+
+    fn key_for_idempotency(idempotency_key: &str) -> String {
+        format!("idempotency:{idempotency_key}")
+    }
+
+    fn key_for_wallet_nonce(wallet_address: &str) -> String {
+        format!("wallet-nonce:{wallet_address}")
+    }
+
+    fn key_for_submitted_tx(tx_hash: &str) -> String {
+        format!("submitted-tx:{tx_hash}")
     }
 
     pub fn save_wallet_binding(&self, record: &WalletBindingRecord) -> Result<()> {
@@ -125,7 +166,8 @@ impl RocksDbKeystore {
     ) -> Result<Vec<AuditEventRecord>> {
         let mut events = Vec::new();
 
-        for (key, value) in self.db.iterator(IteratorMode::Start) {
+        for entry in self.db.iterator(IteratorMode::Start) {
+            let (key, value) = entry?;
             if !key.as_ref().starts_with(b"audit:") {
                 continue;
             }
@@ -159,6 +201,54 @@ impl RocksDbKeystore {
         }
 
         Ok(events)
+    }
+
+    pub fn save_submit_idempotency(&self, record: &SubmitIdempotencyRecord) -> Result<()> {
+        let key = Self::key_for_idempotency(&record.idempotency_key);
+        let value = serde_json::to_vec(record)?;
+        self.db.put(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    pub fn load_submit_idempotency(&self, idempotency_key: &str) -> Result<Option<SubmitIdempotencyRecord>> {
+        let key = Self::key_for_idempotency(idempotency_key);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(serde_json::from_slice::<SubmitIdempotencyRecord>(&raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn load_wallet_nonce(&self, wallet_address: &str) -> Result<Option<WalletNonceRecord>> {
+        let key = Self::key_for_wallet_nonce(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(serde_json::from_slice::<WalletNonceRecord>(&raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_wallet_nonce(&self, record: &WalletNonceRecord) -> Result<()> {
+        let key = Self::key_for_wallet_nonce(&record.wallet_address);
+        let value = serde_json::to_vec(record)?;
+        self.db.put(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    pub fn save_submitted_tx(&self, record: &SubmittedTxRecord) -> Result<()> {
+        let key = Self::key_for_submitted_tx(&record.tx_hash);
+        let value = serde_json::to_vec(record)?;
+        self.db.put(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    pub fn load_submitted_tx(&self, tx_hash: &str) -> Result<Option<SubmittedTxRecord>> {
+        let key = Self::key_for_submitted_tx(tx_hash);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(serde_json::from_slice::<SubmittedTxRecord>(&raw)?)),
+            None => Ok(None),
+        }
     }
 }
 

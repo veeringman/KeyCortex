@@ -51,6 +51,7 @@ pub struct WalletSubmitRequest {
     pub amount: String,
     pub asset: String,
     pub chain: String,
+    pub nonce: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +59,26 @@ pub struct WalletSubmitResponse {
     pub accepted: bool,
     pub tx_hash: String,
     pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletNonceResponse {
+    pub wallet_address: String,
+    pub last_nonce: u64,
+    pub next_nonce: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletTxStatusResponse {
+    pub tx_hash: String,
+    pub status: String,
+    pub accepted: bool,
+    pub chain: String,
+    pub from: String,
+    pub to: String,
+    pub asset: String,
+    pub amount: String,
+    pub submitted_at_epoch_ms: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

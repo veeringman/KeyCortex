@@ -33,7 +33,7 @@ Phase: Foundation & Architecture
 - [x] Define multi-chain extensible approach with FlowCortex-first MVP
 - [x] Define MVP transaction scope to `flowcortex-l1` + assets `PROOF` and `FloweR`
 - [x] Finalize repository-wide folder structure for Rust workspace
-- [ ] Freeze v0.1 API contracts for wallet/auth endpoints
+- [x] Freeze v0.1 API contracts for wallet/auth endpoints
 
 ### B) Rust Workspace Bootstrap
 
@@ -52,11 +52,11 @@ Phase: Foundation & Architecture
 ### C) Security & Signing Core
 
 - [x] Implement key generation for Ed25519
-- [ ] Add secp256k1 support path (feature-gated)
+- [x] Add secp256k1 support path (feature-gated)
 - [x] Implement encrypted private key storage interface (in-memory MVP)
 - [x] Enforce “private keys never leave service boundary” (service-side key use)
 - [x] Add purpose-tagged signing (`auth`, `transaction`, `proof`)
-- [ ] Add zeroization for sensitive memory
+- [x] Add zeroization for sensitive memory
 
 ### D) Auth Adapter Flow
 
@@ -115,7 +115,7 @@ Phase: Foundation & Architecture
 ### I) Quality Gates
 
 - [ ] Unit tests for crypto/signing and challenge flow
-- [ ] Integration tests for wallet/auth REST APIs
+- [x] Integration tests for wallet/auth REST APIs
 - [ ] E2E happy path: login → bind wallet → sign tx → submit
 - [ ] Security checks (nonce replay, invalid sig, expired challenge)
 - [ ] Release checklist for v0.1 MVP
@@ -153,12 +153,38 @@ Phase: Foundation & Architecture
 - [x] Add FlowCortex submit transaction endpoint with MVP allowlist checks
 - [x] Add readiness check for external AuthBuddy JWKS reachability status
 - [x] Add request idempotency key handling for `/wallet/submit`
+- [x] Add tx replay protection nonce model for `/wallet/submit`
+- [x] Persist idempotency records beyond process restart
+- [x] Add `/wallet/nonce` query endpoint for client-side nonce discovery
+- [x] Modularize submit/nonce features out of `wallet-service` main module
+- [x] Split auth and ops handlers into dedicated modules
+- [x] Add transaction status/read API for submitted tx hashes
+- [x] Add tx-status polling integration to FlowCortex adapter
+- [x] Add Postgres-backed audit logs for challenge/verify/bind events
+- [x] Add Postgres migrations and DB repository layer
+- [x] Wire Postgres-backed repositories into auth and ops handlers
+- [x] Add startup migration runner for Postgres SQL files
+- [x] Add fallback mode metrics for RocksDB vs Postgres path
+- [x] Add structured startup report for Postgres migration status
+- [x] Add health/readiness counters for DB fallback events
+- [x] Add startup diagnostics endpoint for dependency details
+- [x] Add API contract docs for `/startupz` diagnostics endpoint
+- [x] Add lightweight smoke tests for DB fallback behavior
+- [x] Add integration tests for Postgres-backed auth/ops flows
+- [x] Add endpoint examples for `/startupz` in integration docs
+- [x] Add CI hook to run fallback smoke test against staging service
+- [x] Add CI job for Postgres integration tests with `TEST_DATABASE_URL`
+- [x] Add local runbook section for Postgres test setup
+- [x] Add release gate checklist for diagnostics endpoints and DB fallback
+- [x] Add operations troubleshooting section for fallback counter spikes
+- [x] Add compact operator dashboard spec for diagnostics endpoint fields
+- [x] Add alerting threshold recommendations for fallback counters
 
 ### Next Up
 
-- [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add tx replay protection nonce model for `/wallet/submit`
-- [ ] Persist idempotency records beyond process restart
+- [ ] Build wallet UI baseline screens (create/connect/balance/sign/history)
+- [ ] Implement E2E happy path: login → bind wallet → sign tx → submit
+- [ ] Run wallet-service test suite in environment with `cargo` available
 
 ### Blockers
 
@@ -193,6 +219,32 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added `POST /wallet/submit` with local tx signing + FlowCortex adapter submission and strict MVP chain/asset enforcement.
 - 2026-02-25: Extended `/readyz` with external AuthBuddy JWKS reachability signal and URL dependency readiness gating.
 - 2026-02-25: Added `Idempotency-Key` support for `/wallet/submit` with cached response replay to prevent accidental duplicate submissions.
+- 2026-02-25: Added per-wallet strictly increasing nonce checks in `/wallet/submit` to reject replayed or stale transaction submissions.
+- 2026-02-25: Persisted submit idempotency and wallet nonce records in RocksDB and added `/wallet/nonce` endpoint for client nonce discovery.
+- 2026-02-25: Refactored submit and nonce handlers into `services/wallet-service/src/submit.rs` to keep `main.rs` focused and smaller.
+- 2026-02-25: Split auth and ops handlers into `services/wallet-service/src/auth.rs` and `services/wallet-service/src/ops.rs`, including JWT principal parsing and ops access checks.
+- 2026-02-25: Added persisted submitted-transaction records and `GET /wallet/tx/{tx_hash}` status/read endpoint.
+- 2026-02-25: Added FlowCortex transaction-status polling via chain adapter and wired `GET /wallet/tx/{tx_hash}` to refresh and persist latest status before responding.
+- 2026-02-25: Added Postgres schema migration SQL (`wallet_bindings`, `challenge_store`, `verification_logs`) and a `PostgresRepository` for bindings/challenges/audit logs.
+- 2026-02-25: Wired optional Postgres integration via `DATABASE_URL`; auth and ops handlers now read/write Postgres when configured, with RocksDB fallback behavior retained.
+- 2026-02-25: Added startup Postgres migration runner (`KEYCORTEX_POSTGRES_MIGRATIONS_DIR`, default `./migrations/postgres`) that applies ordered SQL files on service boot.
+- 2026-02-25: Added storage backend visibility to `/health` and `/readyz` (`rocksdb-only` vs `postgres+rocksdb`) to surface fallback mode at runtime.
+- 2026-02-25: Added structured Postgres startup report in `/health` and `/readyz` including configuration status, migration directory, applied migration file count, and startup error details.
+- 2026-02-25: Added DB fallback counters in `/health` and `/readyz`, plus runtime counter increments for Postgres failures with RocksDB fallback in auth/ops paths.
+- 2026-02-25: Added `GET /startupz` startup diagnostics endpoint with consolidated auth/JWKS, Postgres startup, storage mode, and DB fallback counter visibility.
+- 2026-02-25: Documented `/startupz` diagnostics API contract in root README and digital wallet specification.
+- 2026-02-25: Added executable smoke test script `scripts/smoke_db_fallback.sh` for `/health`, `/readyz`, and `/startupz` fallback diagnostics validation.
+- 2026-02-25: Added environment-gated Postgres integration tests for wallet binding, audit log filtering, and challenge lifecycle persistence in `services/wallet-service/src/db.rs`.
+- 2026-02-25: Added concrete `/startupz` curl usage and sample response examples in README and wallet/auth specification docs.
+- 2026-02-25: Added GitHub Actions workflow `.github/workflows/wallet-service-ci.yml` with Postgres integration test job and dispatchable staging fallback smoke-test hook.
+- 2026-02-25: Added local runbook steps in README for Postgres test setup, integration test execution, and diagnostics smoke checks.
+- 2026-02-25: Added release gate checklist and fallback-counter troubleshooting guidance in README for operations handoff.
+- 2026-02-25: Added dedicated operator dashboard specification for `/health`, `/readyz`, and `/startupz` diagnostics views and alerting rules.
+- 2026-02-25: Added concrete fallback counter threshold recommendations and paging guidance in README.
+- 2026-02-25: Added sustained Postgres degradation operations playbook and `/startupz` field ownership matrix for on-call handoff.
+- 2026-02-25: Added feature-gated secp256k1 signing support in `kc-crypto` and zeroization hardening for decrypted key material across wallet/auth/submit flows.
+- 2026-02-25: Froze v0.1 wallet/auth API contracts in `KeyCortex_API_v0.1_Contract.md` and aligned auth verify response field naming (`verified_at_epoch_ms`) in architecture spec.
+- 2026-02-25: Added wallet/auth REST integration tests in `wallet-service` for create/sign, challenge/verify, bind auth, submit/nonce/tx-status contract coverage.
 
 ---
 

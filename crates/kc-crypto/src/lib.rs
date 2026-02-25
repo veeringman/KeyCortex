@@ -1,8 +1,15 @@
 use anyhow::{Result, anyhow};
 use ed25519_dalek::{Signature, Signer as DalekSigner, SigningKey, Verifier};
+#[cfg(feature = "secp256k1")]
+use k256::ecdsa::{
+    Signature as Secp256k1Signature, SigningKey as Secp256k1SigningKey,
+    VerifyingKey as Secp256k1VerifyingKey,
+    signature::{Signer as K256Signer, Verifier as K256Verifier},
+};
 use kc_api_types::SignPurpose;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 pub trait Signer: Send + Sync {
     fn sign(&self, payload: &[u8], purpose: SignPurpose) -> Result<Vec<u8>>;
@@ -36,9 +43,11 @@ impl Ed25519Signer {
         self.signing_key.to_bytes()
     }
 
-    pub fn from_secret_key_bytes(secret_key: [u8; 32]) -> Self {
+    pub fn from_secret_key_bytes(mut secret_key: [u8; 32]) -> Self {
+        let signing_key = SigningKey::from_bytes(&secret_key);
+        secret_key.zeroize();
         Self {
-            signing_key: SigningKey::from_bytes(&secret_key),
+            signing_key,
         }
     }
 
@@ -52,13 +61,83 @@ impl Ed25519Signer {
         }
 
         let signing_input = signing_input(payload, purpose);
-        let signature = Signature::from_slice(signature);
+        let signature = Signature::from_slice(signature)
+            .map_err(|_| anyhow!("invalid ed25519 signature format"))?;
 
         Ok(self
             .signing_key
             .verifying_key()
             .verify(&signing_input, &signature)
             .is_ok())
+    }
+}
+
+#[cfg(feature = "secp256k1")]
+pub struct Secp256k1Signer {
+    signing_key: Secp256k1SigningKey,
+}
+
+#[cfg(feature = "secp256k1")]
+impl Secp256k1Signer {
+    pub fn new_random() -> Self {
+        let mut rng = OsRng;
+        let signing_key = Secp256k1SigningKey::random(&mut rng);
+        Self { signing_key }
+    }
+
+    pub fn public_key_bytes(&self) -> Vec<u8> {
+        let verifying_key = self.signing_key.verifying_key();
+        verifying_key.to_encoded_point(true).as_bytes().to_vec()
+    }
+
+    pub fn public_key_hex(&self) -> String {
+        to_hex(&self.public_key_bytes())
+    }
+
+    pub fn wallet_address(&self) -> String {
+        let digest = Sha256::digest(self.public_key_bytes());
+        format!("0x{}", to_hex(&digest[..20]))
+    }
+
+    pub fn secret_key_bytes(&self) -> [u8; 32] {
+        self.signing_key.to_bytes().into()
+    }
+
+    pub fn from_secret_key_bytes(mut secret_key: [u8; 32]) -> Result<Self> {
+        let signing_key = Secp256k1SigningKey::from_bytes((&secret_key).into())
+            .map_err(|_| anyhow!("invalid secp256k1 secret key"))?;
+        secret_key.zeroize();
+        Ok(Self { signing_key })
+    }
+
+    pub fn verify(&self, payload: &[u8], purpose: SignPurpose, signature: &[u8]) -> Result<bool> {
+        if payload.is_empty() {
+            return Err(anyhow!("payload cannot be empty"));
+        }
+
+        if signature.len() != 64 {
+            return Err(anyhow!("invalid secp256k1 signature length"));
+        }
+
+        let signing_input = signing_input(payload, purpose);
+        let parsed = Secp256k1Signature::try_from(signature)
+            .map_err(|_| anyhow!("invalid secp256k1 signature format"))?;
+        let verifying_key: Secp256k1VerifyingKey = *self.signing_key.verifying_key();
+
+        Ok(verifying_key.verify(&signing_input, &parsed).is_ok())
+    }
+}
+
+#[cfg(feature = "secp256k1")]
+impl Signer for Secp256k1Signer {
+    fn sign(&self, payload: &[u8], purpose: SignPurpose) -> Result<Vec<u8>> {
+        if payload.is_empty() {
+            return Err(anyhow!("payload cannot be empty"));
+        }
+
+        let signing_input = signing_input(payload, purpose);
+        let signature: Secp256k1Signature = self.signing_key.sign(&signing_input);
+        Ok(signature.to_bytes().to_vec())
     }
 }
 
@@ -103,11 +182,12 @@ pub fn encrypt_key_material(secret_key: &[u8; 32], encryption_key: &str) -> Resu
         return Err(anyhow!("encryption key cannot be empty"));
     }
 
-    let key_stream = derive_key_stream(encryption_key, secret_key.len());
+    let mut key_stream = derive_key_stream(encryption_key, secret_key.len());
     let mut encrypted = Vec::with_capacity(secret_key.len());
     for (index, byte) in secret_key.iter().enumerate() {
         encrypted.push(byte ^ key_stream[index]);
     }
+    key_stream.zeroize();
     Ok(encrypted)
 }
 
@@ -120,14 +200,48 @@ pub fn decrypt_key_material(encrypted: &[u8], encryption_key: &str) -> Result<[u
         return Err(anyhow!("invalid encrypted key length"));
     }
 
-    let key_stream = derive_key_stream(encryption_key, encrypted.len());
+    let mut key_stream = derive_key_stream(encryption_key, encrypted.len());
     let mut decrypted = [0_u8; 32];
 
     for (index, byte) in encrypted.iter().enumerate() {
         decrypted[index] = byte ^ key_stream[index];
     }
 
+    key_stream.zeroize();
+
     Ok(decrypted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ed25519_sign_verify_roundtrip() {
+        let signer = Ed25519Signer::new_random();
+        let payload = b"test-payload";
+        let signature = signer
+            .sign(payload, SignPurpose::Transaction)
+            .expect("sign should succeed");
+        let valid = signer
+            .verify(payload, SignPurpose::Transaction, &signature)
+            .expect("verify should succeed");
+        assert!(valid);
+    }
+
+    #[cfg(feature = "secp256k1")]
+    #[test]
+    fn secp256k1_sign_verify_roundtrip() {
+        let signer = Secp256k1Signer::new_random();
+        let payload = b"test-payload";
+        let signature = signer
+            .sign(payload, SignPurpose::Proof)
+            .expect("sign should succeed");
+        let valid = signer
+            .verify(payload, SignPurpose::Proof, &signature)
+            .expect("verify should succeed");
+        assert!(valid);
+    }
 }
 
 fn derive_key_stream(seed: &str, len: usize) -> Vec<u8> {

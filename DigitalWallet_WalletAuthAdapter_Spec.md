@@ -198,6 +198,44 @@ Validation notes:
 
 Fetch token balance via FlowCortex.
 
+#### `GET /startupz`
+
+Returns startup/runtime diagnostics for wallet-service dependencies and fallback posture.
+
+Response includes:
+
+- storage backend mode (`rocksdb-only` or `postgres+rocksdb`)
+- Postgres startup report (configured/enabled status, migration directory, applied migration file count, startup errors)
+- DB fallback counters (per-path and total)
+- auth/JWKS runtime status snapshot
+
+Example response (excerpt):
+
+```json
+{
+  "service": "wallet-service",
+  "storage_mode": "rocksdb-only",
+  "postgres_enabled": false,
+  "postgres_startup": {
+    "configured": false,
+    "enabled": false,
+    "migrations_dir": null,
+    "migration_files_applied": 0,
+    "last_error": null
+  },
+  "db_fallback_counters": {
+    "postgres_unavailable": 0,
+    "challenge_persist_failures": 0,
+    "challenge_mark_used_failures": 0,
+    "binding_write_failures": 0,
+    "binding_read_failures": 0,
+    "audit_write_failures": 0,
+    "audit_read_failures": 0,
+    "total": 0
+  }
+}
+```
+
 ### 6.2 Auth Adapter APIs
 
 #### `POST /auth/challenge`
@@ -233,7 +271,7 @@ Response:
 {
   "valid": true,
   "wallet_address": "...",
-  "verified_at": "timestamp"
+  "verified_at_epoch_ms": 1700000000000
 }
 ```
 

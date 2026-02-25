@@ -5,9 +5,15 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+secp256k1 = ["dep:k256"]
+
 [dependencies]
 anyhow.workspace = true
 ed25519-dalek.workspace = true
+k256 = { workspace = true, optional = true }
 kc-api-types = { path = "../kc-api-types" }
 rand.workspace = true
 sha2.workspace = true
+zeroize.workspace = true

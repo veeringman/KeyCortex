@@ -5,7 +5,9 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet,
+};
 use kc_api_types::{
     AuthBindRequest, AuthBindResponse, AuthChallengeResponse, AuthVerifyRequest, AuthVerifyResponse,
     SignPurpose, WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
@@ -94,6 +96,7 @@ struct AppState {
     keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
     authbuddy_jwt_secret: Arc<str>,
+    authbuddy_jwks: Option<Arc<JwkSet>>,
     authbuddy_expected_issuer: Option<Arc<str>>,
     authbuddy_expected_audience: Option<Arc<str>>,
     challenge_store: Arc<RwLock<HashMap<String, ChallengeRecord>>>,
@@ -120,6 +123,11 @@ async fn main() -> anyhow::Result<()> {
             env::var("AUTHBUDDY_JWT_SECRET")
                 .unwrap_or_else(|_| "authbuddy-dev-secret-change-me".to_owned()),
         ),
+        authbuddy_jwks: env::var("AUTHBUDDY_JWKS_JSON")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .and_then(|json| serde_json::from_str::<JwkSet>(&json).ok())
+            .map(Arc::new),
         authbuddy_expected_issuer: env::var("AUTHBUDDY_JWT_ISSUER")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -662,24 +670,18 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
         return Err("missing bearer token".to_owned());
     }
 
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.validate_exp = false;
-    validation.required_spec_claims.clear();
-
-    let token_data = decode::<AuthBuddyClaims>(
-        token,
-        &DecodingKey::from_secret(state.authbuddy_jwt_secret.as_bytes()),
-        &validation,
-    )
-    .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
+    let claims = if let Some(jwks) = &state.authbuddy_jwks {
+        decode_authbuddy_rs256_claims(token, jwks)?
+    } else {
+        decode_authbuddy_hs256_claims(token, state.authbuddy_jwt_secret.as_ref())?
+    };
 
     let now_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))
         .as_secs();
 
-    let exp = token_data
-        .claims
+    let exp = claims
         .exp
         .ok_or_else(|| "missing AuthBuddy JWT exp claim".to_owned())?;
     if exp <= now_epoch {
@@ -688,7 +690,6 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
 
     if let Some(expected_issuer) = &state.authbuddy_expected_issuer {
         let issuer = token_data
-            .claims
             .iss
             .as_deref()
             .ok_or_else(|| "missing AuthBuddy JWT iss claim".to_owned())?;
@@ -699,7 +700,6 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
 
     if let Some(expected_audience) = &state.authbuddy_expected_audience {
         let audience = token_data
-            .claims
             .aud
             .as_deref()
             .ok_or_else(|| "missing AuthBuddy JWT aud claim".to_owned())?;
@@ -708,13 +708,13 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
         }
     }
 
-    let user_id = token_data.claims.sub.trim().to_owned();
+    let user_id = claims.sub.trim().to_owned();
     if user_id.is_empty() {
         return Err("invalid AuthBuddy JWT subject".to_owned());
     }
 
-    let mut roles = token_data.claims.roles.unwrap_or_default();
-    if let Some(role) = token_data.claims.role {
+    let mut roles = claims.roles.unwrap_or_default();
+    if let Some(role) = claims.role {
         for entry in role.split(',') {
             let value = entry.trim();
             if !value.is_empty() {
@@ -724,4 +724,49 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
     }
 
     Ok(AuthPrincipal { user_id, roles })
+}
+
+fn decode_authbuddy_hs256_claims(token: &str, jwt_secret: &str) -> Result<AuthBuddyClaims, String> {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = false;
+    validation.required_spec_claims.clear();
+
+    let token_data = decode::<AuthBuddyClaims>(
+        token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &validation,
+    )
+    .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
+
+    Ok(token_data.claims)
+}
+
+fn decode_authbuddy_rs256_claims(token: &str, jwks: &JwkSet) -> Result<AuthBuddyClaims, String> {
+    let header = decode_header(token).map_err(|_| "invalid AuthBuddy JWT header".to_owned())?;
+
+    if header.alg != Algorithm::RS256 {
+        return Err("invalid AuthBuddy JWT algorithm; expected RS256".to_owned());
+    }
+
+    let kid = header
+        .kid
+        .ok_or_else(|| "missing AuthBuddy JWT kid header".to_owned())?;
+
+    let jwk = jwks
+        .keys
+        .iter()
+        .find(|entry| entry.common.key_id.as_deref() == Some(kid.as_str()))
+        .ok_or_else(|| "no matching JWK found for token kid".to_owned())?;
+
+    let decoding_key = DecodingKey::from_jwk(jwk)
+        .map_err(|_| "unable to construct decoding key from JWK".to_owned())?;
+
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.validate_exp = false;
+    validation.required_spec_claims.clear();
+
+    let token_data = decode::<AuthBuddyClaims>(token, &decoding_key, &validation)
+        .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
+
+    Ok(token_data.claims)
 }

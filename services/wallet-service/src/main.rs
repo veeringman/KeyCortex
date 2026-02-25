@@ -2,6 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -43,6 +44,16 @@ struct HealthResponse {
 struct VersionResponse {
     service: &'static str,
     version: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ReadinessResponse {
+    service: &'static str,
+    ready: bool,
+    keystore_ready: bool,
+    auth_ready: bool,
+    auth_mode: String,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -273,6 +284,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/readyz", get(readyz))
         .route("/version", get(version))
         .route("/wallet/create", post(wallet_create))
         .route("/wallet/sign", post(wallet_sign))
@@ -329,6 +341,62 @@ async fn version() -> Json<VersionResponse> {
         service: "wallet-service",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
+    let keystore_ready = state
+        .keystore
+        .load_encrypted_key("__readiness_probe__")
+        .await
+        .is_ok();
+
+    let jwks_snapshot = state
+        .jwks_status
+        .read()
+        .ok()
+        .map(|status| status.clone())
+        .unwrap_or(JwksRuntimeStatus {
+            source: None,
+            loaded: false,
+            last_refresh_epoch_ms: None,
+            last_error: Some("jwks status unavailable".to_owned()),
+        });
+
+    let has_hs256_fallback = !state.authbuddy_jwt_secret.trim().is_empty();
+    let auth_ready = jwks_snapshot.loaded || has_hs256_fallback;
+    let auth_mode = if jwks_snapshot.loaded {
+        "rs256-jwks"
+    } else {
+        "hs256-fallback"
+    }
+    .to_owned();
+
+    let ready = keystore_ready && auth_ready;
+    let reason = if ready {
+        None
+    } else if !keystore_ready {
+        Some("keystore not ready".to_owned())
+    } else {
+        Some("auth mode not ready".to_owned())
+    };
+
+    let status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    (
+        status,
+        Json(ReadinessResponse {
+            service: "wallet-service",
+            ready,
+            keystore_ready,
+            auth_ready,
+            auth_mode,
+            reason,
+        }),
+    )
 }
 
 async fn wallet_create(State(state): State<AppState>) -> ApiResult<WalletCreateResponse> {

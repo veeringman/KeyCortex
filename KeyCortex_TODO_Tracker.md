@@ -149,12 +149,13 @@ Phase: Foundation & Architecture
 - [x] Add periodic JWKS refresh and key rotation handling
 - [x] Add HTTPS JWKS fetch with retry/backoff cache refresh
 - [x] Add startup/health auth mode and JWKS status visibility
+- [x] Add `/readyz` dependency checks for keystore and auth readiness
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Add `/readyz` endpoint with dependency checks (keystore + auth mode)
+- [ ] Add readiness check for external AuthBuddy JWKS reachability status
 
 ### Blockers
 
@@ -185,6 +186,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added periodic JWKS refresh from `AUTHBUDDY_JWKS_PATH` with live cache replacement and key rotation support (`AUTHBUDDY_JWKS_REFRESH_SECONDS`).
 - 2026-02-25: Added `AUTHBUDDY_JWKS_URL` fetch path with retry/backoff and file fallback for resilient JWKS cache refresh.
 - 2026-02-25: Extended `/health` to expose auth mode and JWKS runtime status (`source`, `loaded`, `last_refresh`, `last_error`).
+- 2026-02-25: Added `/readyz` endpoint returning readiness status for keystore and auth dependency state.
 
 ---
 

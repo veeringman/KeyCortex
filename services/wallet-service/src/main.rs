@@ -12,10 +12,11 @@ use jsonwebtoken::{
 use kc_api_types::{
     AuthBindRequest, AuthBindResponse, AuthChallengeResponse, AuthVerifyRequest, AuthVerifyResponse,
     SignPurpose, WalletBalanceResponse, WalletCreateResponse, WalletSignRequest, WalletSignResponse,
+    WalletSubmitRequest, WalletSubmitResponse,
 };
 use kc_auth_adapter::{challenge_response, issue_challenge};
-use kc_api_types::{AssetSymbol, WalletAddress};
-use kc_chain_client::ChainAdapter;
+use kc_api_types::{AssetSymbol, ChainId, WalletAddress};
+use kc_chain_client::{ChainAdapter, SubmitTxRequest};
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
 use kc_storage::{AuditEventRecord, Keystore, RocksDbKeystore, WalletBindingRecord};
@@ -288,6 +289,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/version", get(version))
         .route("/wallet/create", post(wallet_create))
         .route("/wallet/sign", post(wallet_sign))
+        .route("/wallet/submit", post(wallet_submit))
         .route("/wallet/balance", get(wallet_balance))
         .route("/auth/challenge", post(auth_challenge))
         .route("/auth/verify", post(auth_verify))
@@ -482,6 +484,71 @@ async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<Wa
         chain: result.chain.0,
         asset: result.asset.0,
         amount: result.amount,
+    }))
+}
+
+async fn wallet_submit(
+    State(state): State<AppState>,
+    Json(request): Json<WalletSubmitRequest>,
+) -> ApiResult<WalletSubmitResponse> {
+    if request.from.trim().is_empty() {
+        return Err(bad_request("from is required"));
+    }
+    if request.to.trim().is_empty() {
+        return Err(bad_request("to is required"));
+    }
+    if request.amount.trim().is_empty() {
+        return Err(bad_request("amount is required"));
+    }
+    if request.chain != FLOWCORTEX_L1 {
+        return Err(bad_request("unsupported chain for MVP; only flowcortex-l1 is enabled"));
+    }
+    if request.asset != "PROOF" && request.asset != "FloweR" {
+        return Err(bad_request("unsupported asset for MVP; only PROOF and FloweR are enabled"));
+    }
+
+    let encrypted_key = state
+        .keystore
+        .load_encrypted_key(&request.from)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| bad_request("source wallet not found"))?;
+
+    let secret_key = decrypt_key_material(&encrypted_key, state.encryption_key.as_ref())
+        .map_err(internal_error)?;
+    let signer = Ed25519Signer::from_secret_key_bytes(secret_key);
+
+    if signer.wallet_address() != request.from {
+        return Err(bad_request("source wallet address does not match custodied key"));
+    }
+
+    let payload = format!(
+        "from={};to={};amount={};asset={};chain={}",
+        request.from, request.to, request.amount, request.asset, request.chain
+    );
+
+    let signature = signer
+        .sign(payload.as_bytes(), SignPurpose::Transaction)
+        .map_err(internal_error)?;
+    let signature_hex = to_hex(&signature);
+
+    let adapter = FlowCortexAdapter;
+    let result = adapter
+        .submit_transaction(SubmitTxRequest {
+            from: WalletAddress(request.from.clone()),
+            to: WalletAddress(request.to.clone()),
+            amount: request.amount.clone(),
+            asset: AssetSymbol(request.asset.clone()),
+            chain: ChainId(request.chain.clone()),
+            signed_payload: signature_hex.clone(),
+        })
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(WalletSubmitResponse {
+        accepted: result.accepted,
+        tx_hash: result.tx_hash,
+        signature: signature_hex,
     }))
 }
 

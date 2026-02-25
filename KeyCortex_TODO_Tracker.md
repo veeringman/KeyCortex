@@ -70,11 +70,11 @@ Phase: Foundation & Architecture
 
 - [x] Define `ChainAdapter` trait in `kc-chain-client`
 - [x] Implement FlowCortex adapter in `kc-chain-flowcortex`
-- [ ] Implement `GET /wallet/balance` via FlowCortex
-- [ ] Implement transaction submit path via FlowCortex
-- [ ] Enforce runtime allowlist:
-  - [ ] chain = `flowcortex-l1`
-  - [ ] assets = `PROOF`, `FloweR`
+- [x] Implement `GET /wallet/balance` via FlowCortex
+- [x] Implement transaction submit path via FlowCortex
+- [x] Enforce runtime allowlist:
+  - [x] chain = `flowcortex-l1`
+  - [x] assets = `PROOF`, `FloweR`
 
 ### F) API & Data Layer
 
@@ -150,12 +150,13 @@ Phase: Foundation & Architecture
 - [x] Add HTTPS JWKS fetch with retry/backoff cache refresh
 - [x] Add startup/health auth mode and JWKS status visibility
 - [x] Add `/readyz` dependency checks for keystore and auth readiness
+- [x] Add FlowCortex submit transaction endpoint with MVP allowlist checks
 
 ### Next Up
 
-- [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
 - [ ] Add readiness check for external AuthBuddy JWKS reachability status
+- [ ] Add request idempotency key handling for `/wallet/submit`
 
 ### Blockers
 
@@ -187,6 +188,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added `AUTHBUDDY_JWKS_URL` fetch path with retry/backoff and file fallback for resilient JWKS cache refresh.
 - 2026-02-25: Extended `/health` to expose auth mode and JWKS runtime status (`source`, `loaded`, `last_refresh`, `last_error`).
 - 2026-02-25: Added `/readyz` endpoint returning readiness status for keystore and auth dependency state.
+- 2026-02-25: Added `POST /wallet/submit` with local tx signing + FlowCortex adapter submission and strict MVP chain/asset enforcement.
 
 ---
 

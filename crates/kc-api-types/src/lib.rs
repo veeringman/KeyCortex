@@ -45,6 +45,22 @@ pub struct WalletBalanceResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletSubmitRequest {
+    pub from: String,
+    pub to: String,
+    pub amount: String,
+    pub asset: String,
+    pub chain: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletSubmitResponse {
+    pub accepted: bool,
+    pub tx_hash: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthChallengeResponse {
     pub challenge: String,
     pub expires_in: u64,

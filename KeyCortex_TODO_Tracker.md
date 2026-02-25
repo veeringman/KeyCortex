@@ -144,12 +144,13 @@ Phase: Foundation & Architecture
 - [x] Add ops read endpoints for bindings and audit logs
 - [x] Add ops endpoint auth guard and role checks
 - [x] Replace static auth parsing with AuthBuddy JWT validation
+- [x] Enforce AuthBuddy JWT `exp`/`iss`/`aud` claim checks
 
 ### Next Up
 
 - [ ] Add FlowCortex balance and submit transaction endpoints
 - [ ] Add Postgres-backed audit logs for challenge/verify/bind events
-- [ ] Enforce JWT `exp`/`iss`/`aud` validation against AuthBuddy metadata
+- [ ] Add JWKS/RS256 support for production AuthBuddy token verification
 
 ### Blockers
 
@@ -175,6 +176,7 @@ Phase: Foundation & Architecture
 - 2026-02-25: Added ops read endpoints for binding lookup and filtered audit log retrieval backed by RocksDB.
 - 2026-02-25: Added ops endpoint access guard requiring bearer principal + `x-role: ops-admin`, with success/denied access auditing.
 - 2026-02-25: Integrated AuthBuddy JWT signature validation (HS256) for `/auth/bind` and `/ops/*` authorization, replacing raw bearer principal parsing.
+- 2026-02-25: Hardened AuthBuddy JWT validation by enforcing `exp` and optional `iss`/`aud` checks via `AUTHBUDDY_JWT_ISSUER` and `AUTHBUDDY_JWT_AUDIENCE`.
 
 ---
 

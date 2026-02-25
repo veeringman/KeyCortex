@@ -22,7 +22,7 @@ use std::env;
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -68,6 +68,9 @@ struct AuthBuddyClaims {
     sub: String,
     roles: Option<Vec<String>>,
     role: Option<String>,
+    exp: Option<u64>,
+    iss: Option<String>,
+    aud: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +94,8 @@ struct AppState {
     keystore: Arc<RocksDbKeystore>,
     encryption_key: Arc<str>,
     authbuddy_jwt_secret: Arc<str>,
+    authbuddy_expected_issuer: Option<Arc<str>>,
+    authbuddy_expected_audience: Option<Arc<str>>,
     challenge_store: Arc<RwLock<HashMap<String, ChallengeRecord>>>,
 }
 
@@ -115,6 +120,14 @@ async fn main() -> anyhow::Result<()> {
             env::var("AUTHBUDDY_JWT_SECRET")
                 .unwrap_or_else(|_| "authbuddy-dev-secret-change-me".to_owned()),
         ),
+        authbuddy_expected_issuer: env::var("AUTHBUDDY_JWT_ISSUER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(Arc::<str>::from),
+        authbuddy_expected_audience: env::var("AUTHBUDDY_JWT_AUDIENCE")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(Arc::<str>::from),
         challenge_store: Arc::new(RwLock::new(HashMap::new())),
     };
 
@@ -659,6 +672,41 @@ fn parse_authbuddy_principal(headers: &HeaderMap, state: &AppState) -> Result<Au
         &validation,
     )
     .map_err(|_| "invalid AuthBuddy JWT".to_owned())?;
+
+    let now_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::from_secs(0))
+        .as_secs();
+
+    let exp = token_data
+        .claims
+        .exp
+        .ok_or_else(|| "missing AuthBuddy JWT exp claim".to_owned())?;
+    if exp <= now_epoch {
+        return Err("expired AuthBuddy JWT".to_owned());
+    }
+
+    if let Some(expected_issuer) = &state.authbuddy_expected_issuer {
+        let issuer = token_data
+            .claims
+            .iss
+            .as_deref()
+            .ok_or_else(|| "missing AuthBuddy JWT iss claim".to_owned())?;
+        if issuer != expected_issuer.as_ref() {
+            return Err("invalid AuthBuddy JWT issuer".to_owned());
+        }
+    }
+
+    if let Some(expected_audience) = &state.authbuddy_expected_audience {
+        let audience = token_data
+            .claims
+            .aud
+            .as_deref()
+            .ok_or_else(|| "missing AuthBuddy JWT aud claim".to_owned())?;
+        if audience != expected_audience.as_ref() {
+            return Err("invalid AuthBuddy JWT audience".to_owned());
+        }
+    }
 
     let user_id = token_data.claims.sub.trim().to_owned();
     if user_id.is_empty() {

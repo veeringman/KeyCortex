@@ -958,7 +958,7 @@ KeyCortex provides a complete Docker stack with multi-stage builds, health check
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Multi-stage build: `rust:1.85-bookworm` → `debian:bookworm-slim` (builds API + WASM) |
+| `Dockerfile` | Multi-stage build: `rust:1.93-bookworm` → `debian:bookworm-slim` (builds API + WASM) |
 | `Dockerfile.watchdog` | Lightweight monitoring container (bash, curl, jq, git) |
 | `docker-compose.yml` | Full stack orchestration (5 services) |
 | `deploy/nginx-wasm.conf` | Nginx config with correct WASM MIME types |

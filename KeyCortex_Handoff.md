@@ -582,7 +582,7 @@ In Docker: `docker compose --profile watchdog up -d`
 
 | File | Description |
 |------|-------------|
-| `Dockerfile` | Multi-stage: `rust:1.85-bookworm` builder → `debian:bookworm-slim` runtime |
+| `Dockerfile` | Multi-stage: `rust:1.93-bookworm` builder → `debian:bookworm-slim` runtime |
 | `Dockerfile.watchdog` | Lightweight bash/curl/jq/git container |
 | `docker-compose.yml` | 5-service stack with profiles |
 | `deploy/nginx-wasm.conf` | Nginx with `application/wasm` MIME type |

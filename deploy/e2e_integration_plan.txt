@@ -1,0 +1,310 @@
+###############################################################################
+# End-to-End Integration Plan — Local Ubuntu
+#
+# Run all 6 platforms on one machine, test the full treasury settlement flow.
+#
+# Prerequisites:
+#   - Ubuntu 20.04+ with Docker + Docker Compose
+#   - 16 GB RAM recommended (6 API servers + 6 Postgres + nginx containers)
+#   - ~10 GB disk for Docker images
+#   - All 6 repos cloned under ~/demo/
+###############################################################################
+
+=============================================================================
+PHASE 0: DIRECTORY LAYOUT
+=============================================================================
+
+mkdir -p ~/demo && cd ~/demo
+
+# Clone all repos
+git clone git@github.com:veeringman/KeyCortex.git
+git clone git@github.com:veeringman/AuthBuddy.git
+git clone git@github.com:veeringman/flow-cortex.git
+git clone git@github.com:veeringman/proof_cortex.git
+git clone git@github.com:veeringman/FortressDigital.git
+git clone git@github.com:veeringman/TreasurySettlement.git
+
+Expected layout:
+  ~/demo/
+    KeyCortex/            → ports 8080, 8081, 8082, 5432
+    AuthBuddy/            → ports 8100, 8101, 5433
+    flow-cortex/          → ports 8200, 8201, 5434
+    proof_cortex/         → ports 8300, 5435
+    FortressDigital/      → ports 8400, 8401, 5436
+    TreasurySettlement/   → ports 8500, 8501, 5437
+
+=============================================================================
+PHASE 1: START PLATFORMS (bottom-up order)
+=============================================================================
+
+The dependency order is:
+
+  1. FlowCortex L1     (chain layer — no dependencies)
+  2. AuthBuddy IdP     (identity — no dependencies)
+  3. KeyCortex         (depends on FlowCortex config, AuthBuddy JWTs)
+  4. FortressDigital   (depends on KeyCortex wallet-status)
+  5. ProofCortex       (depends on KeyCortex commitments)
+  6. Treasury App      (depends on ALL of the above)
+
+Start each platform:
+
+  # 1. FlowCortex
+  cd ~/demo/flow-cortex
+  ./scripts/setup_docker.sh
+
+  # 2. AuthBuddy
+  cd ~/demo/AuthBuddy
+  ./scripts/setup_docker.sh
+
+  # 3. KeyCortex
+  cd ~/demo/KeyCortex
+  ./scripts/setup_docker.sh
+
+  # 4. FortressDigital
+  cd ~/demo/FortressDigital
+  ./scripts/setup_docker.sh
+
+  # 5. ProofCortex
+  cd ~/demo/proof_cortex
+  ./scripts/setup_docker.sh
+
+  # 6. Treasury Settlement
+  cd ~/demo/TreasurySettlement
+  ./scripts/setup_docker.sh
+
+Verify all healthy:
+
+  for port in 8080 8100 8200 8300 8400 8500; do
+    printf "%-5s: %s\n" "$port" \
+      "$(curl -sf -o /dev/null -w '%{http_code}' http://localhost:$port/readyz 2>/dev/null || echo 'DOWN')"
+  done
+
+Expected output:
+  8080 : 200    (KeyCortex)
+  8100 : 200    (AuthBuddy)
+  8200 : 200    (FlowCortex)
+  8300 : 200    (ProofCortex)
+  8400 : 200    (FortressDigital)
+  8500 : 200    (Treasury App)
+
+=============================================================================
+PHASE 2: CREATE DOCKER NETWORK (for inter-service calls)
+=============================================================================
+
+By default each docker-compose has its own network. For cross-platform calls
+you have two options:
+
+Option A — Host networking (simplest for local dev):
+  Each service calls http://localhost:<PORT>. Works out of the box since all
+  ports are mapped to host. No extra config needed.
+
+  Set env vars in each platform's .env or docker-compose.yml:
+    KEYCORTEX_API_URL=http://host.docker.internal:8080
+    AUTHBUDDY_API_URL=http://host.docker.internal:8100
+    FLOWCORTEX_RPC_URL=http://host.docker.internal:8200
+    PROOFCORTEX_API_URL=http://host.docker.internal:8300
+    FORTRESS_API_URL=http://host.docker.internal:8400
+    TREASURY_API_URL=http://host.docker.internal:8500
+
+  NOTE: On Linux, host.docker.internal requires:
+    docker compose ... --add-host=host.docker.internal:host-gateway
+
+  Or use the host IP directly:
+    HOST_IP=$(hostname -I | awk '{print $1}')
+    KEYCORTEX_API_URL=http://$HOST_IP:8080
+
+Option B — Shared external network (production-like):
+  docker network create ecosystem-net
+
+  Then in each docker-compose.yml add:
+    networks:
+      default:
+        external: true
+        name: ecosystem-net
+
+  Services can then call each other by container name:
+    KEYCORTEX_API_URL=http://keycortex-api:8080
+    AUTHBUDDY_API_URL=http://authbuddy-api:8100
+
+=============================================================================
+PHASE 3: END-TO-END TEST FLOW (manual curl)
+=============================================================================
+
+This walks through the full Treasury Settlement flow from §7 of the
+Treasury integration guide.
+
+--- Step 1: Health check all platforms ---
+
+  echo "=== Health checks ==="
+  curl -s http://localhost:8080/health | jq .   # KeyCortex
+  curl -s http://localhost:8100/health | jq .   # AuthBuddy
+  curl -s http://localhost:8200/health | jq .   # FlowCortex
+  curl -s http://localhost:8300/health | jq .   # ProofCortex
+  curl -s http://localhost:8400/health | jq .   # FortressDigital
+
+--- Step 2: Get chain config (KeyCortex → FlowCortex) ---
+
+  echo "=== Chain Config ==="
+  curl -s http://localhost:8080/chain/config | jq .
+
+  Expected: chain_slug "flowcortex-l1", signature_scheme "ed25519"
+
+--- Step 3: Create a wallet ---
+
+  echo "=== Create Wallet ==="
+  WALLET=$(curl -s -X POST http://localhost:8080/wallet/create \
+    -H "Content-Type: application/json" \
+    -d '{"label": "E2E Test Wallet"}')
+  echo "$WALLET" | jq .
+
+  ADDR=$(echo "$WALLET" | jq -r '.wallet_address')
+  echo "Wallet address: $ADDR"
+
+--- Step 4: List wallets ---
+
+  echo "=== List Wallets ==="
+  curl -s http://localhost:8080/wallet/list | jq .
+
+--- Step 5: Auth challenge → sign → verify ---
+
+  echo "=== Auth Challenge ==="
+  CHALLENGE=$(curl -s -X POST http://localhost:8080/auth/challenge)
+  echo "$CHALLENGE" | jq .
+  CHAL_ID=$(echo "$CHALLENGE" | jq -r '.challenge')
+
+  echo "=== Sign Challenge ==="
+  SIG=$(curl -s -X POST http://localhost:8080/wallet/sign \
+    -H "Content-Type: application/json" \
+    -d "{\"wallet_address\": \"$ADDR\", \"payload\": \"$CHAL_ID\", \"purpose\": \"auth\"}")
+  echo "$SIG" | jq .
+  SIGNATURE=$(echo "$SIG" | jq -r '.signature')
+
+  echo "=== Verify ==="
+  curl -s -X POST http://localhost:8080/auth/verify \
+    -H "Content-Type: application/json" \
+    -d "{\"wallet_address\": \"$ADDR\", \"challenge\": \"$CHAL_ID\", \"signature\": \"$SIGNATURE\"}" | jq .
+
+--- Step 6: Bind wallet (requires AuthBuddy JWT) ---
+
+  # Generate a dev JWT (HS256 with the dev secret)
+  # If AuthBuddy is running, get a real JWT from:
+  #   curl -s -X POST http://localhost:8100/auth/token \
+  #     -d '{"username":"testuser","password":"testpass"}' | jq -r '.token'
+  #
+  # For dev testing with HS256 shared secret:
+  JWT="<paste-authbuddy-jwt-here>"
+
+  echo "=== Bind Wallet ==="
+  curl -s -X POST http://localhost:8080/auth/bind \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $JWT" \
+    -d "{\"wallet_address\": \"$ADDR\", \"chain\": \"flowcortex-l1\"}" | jq .
+
+--- Step 7: FortressDigital risk check ---
+
+  echo "=== Risk Check ==="
+  curl -s -X POST http://localhost:8080/fortressdigital/wallet-status \
+    -H "Content-Type: application/json" \
+    -d "{\"wallet_address\": \"$ADDR\", \"chain\": \"flowcortex-l1\"}" | jq .
+
+  Look for risk_signals array — should have no red flags after binding.
+
+--- Step 8: ProofCortex commitment ---
+
+  echo "=== Commitment ==="
+  curl -s -X POST http://localhost:8080/proofcortex/commitment \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"wallet_address\": \"$ADDR\",
+      \"challenge\": \"$CHAL_ID\",
+      \"verification_result\": true,
+      \"chain\": \"flowcortex-l1\",
+      \"tx_hash\": \"pending-integration\"
+    }" | jq .
+
+--- Step 9: Submit transaction ---
+
+  echo "=== Get Nonce ==="
+  curl -s "http://localhost:8080/wallet/nonce?wallet_address=$ADDR" | jq .
+
+  echo "=== Submit Tx ==="
+  curl -s -X POST http://localhost:8080/wallet/submit \
+    -H "Content-Type: application/json" \
+    -H "Idempotency-Key: e2e-test-$(date +%s)" \
+    -d "{
+      \"from\": \"$ADDR\",
+      \"to\": \"0x0000000000000000000000000000000000000001\",
+      \"amount\": \"1000000000000000000\",
+      \"asset\": \"PROOF\",
+      \"chain\": \"flowcortex-l1\",
+      \"nonce\": 1
+    }" | jq .
+
+--- Step 10: Check tx status ---
+
+  echo "=== Tx Status ==="
+  curl -s http://localhost:8080/wallet/tx/pending-integration | jq .
+
+--- Step 11: Balance check ---
+
+  echo "=== Balance ==="
+  curl -s "http://localhost:8080/wallet/balance?wallet_address=$ADDR&asset=PROOF&chain=flowcortex-l1" | jq .
+
+=============================================================================
+PHASE 4: AUTOMATED E2E SCRIPT
+=============================================================================
+
+Save this as ~/demo/e2e_smoke.sh and run after all platforms are up:
+
+  #!/usr/bin/env bash
+  set -euo pipefail
+  PASS=0; FAIL=0
+
+  check() {
+    local label="$1" url="$2" method="${3:-GET}" body="${4:-}" expect="${5:-200}"
+    local args=(-s -o /dev/null -w "%{http_code}" -X "$method")
+    [[ -n "$body" ]] && args+=(-H "Content-Type: application/json" -d "$body")
+    local code=$(curl "${args[@]}" "$url" 2>/dev/null || echo "000")
+    if [[ "$code" == "$expect" ]]; then
+      echo "  ✓ $label ($code)"; ((PASS++))
+    else
+      echo "  ✗ $label ($code, expected $expect)"; ((FAIL++))
+    fi
+  }
+
+  echo "═══ Platform Health ═══"
+  check "KeyCortex"        http://localhost:8080/readyz
+  check "AuthBuddy"        http://localhost:8100/readyz
+  check "FlowCortex"       http://localhost:8200/readyz
+  check "ProofCortex"      http://localhost:8300/readyz
+  check "FortressDigital"  http://localhost:8400/readyz
+  check "Treasury App"     http://localhost:8500/readyz
+
+  echo "═══ KeyCortex UIs ═══"
+  check "JS Frontend"      http://localhost:8081/
+  check "WASM Frontend"    http://localhost:8082/
+  check "WASM CSS"         http://localhost:8082/wallet-baseline/styles.css
+  check "WASM .wasm"       http://localhost:8082/pkg/wallet_wasm_bg.wasm
+
+  echo "═══ Wallet Flow ═══"
+  check "Create wallet"    http://localhost:8080/wallet/create POST '{"label":"e2e"}'
+  check "List wallets"     http://localhost:8080/wallet/list
+  check "Chain config"     http://localhost:8080/chain/config
+  check "Auth challenge"   http://localhost:8080/auth/challenge POST
+
+  echo ""
+  echo "Results: $PASS passed, $FAIL failed"
+  [[ $FAIL -eq 0 ]] && echo "ALL GOOD ✓" || echo "FAILURES DETECTED ✗"
+  exit $FAIL
+
+=============================================================================
+PHASE 5: STOP EVERYTHING
+=============================================================================
+
+  # Stop in reverse order
+  for dir in TreasurySettlement proof_cortex FortressDigital KeyCortex AuthBuddy flow-cortex; do
+    (cd ~/demo/$dir && ./scripts/setup_docker.sh --down 2>/dev/null) || true
+  done
+
+  # Or nuclear option:
+  docker stop $(docker ps -q) 2>/dev/null; docker system prune -f

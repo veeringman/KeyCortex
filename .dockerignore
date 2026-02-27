@@ -1,0 +1,8 @@
+target/
+data/
+.git/
+.watchdog/
+*.log
+node_modules/
+dist/
+.env

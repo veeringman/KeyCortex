@@ -1,0 +1,31 @@
+###############################################################################
+# KeyCortex Watchdog — Lightweight container for monitoring
+###############################################################################
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    bash curl jq git openssh-client ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY scripts/watchdog.sh /app/scripts/watchdog.sh
+RUN chmod +x /app/scripts/watchdog.sh
+
+# Git config
+RUN git config --global user.name "KeyCortex Watchdog" && \
+    git config --global user.email "watchdog@keycortex.local" && \
+    git config --global init.defaultBranch main
+
+# SSH known hosts for github.com
+RUN mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null
+
+ENV KEYCORTEX_API_URL=http://wallet-service:8080
+ENV KEYCORTEX_JS_URL=http://ui-js:80
+ENV KEYCORTEX_WASM_URL=http://ui-wasm:80
+ENV WATCHDOG_INTERVAL=60
+ENV GIT_REMOTE_URL=git@github.com:veeringman/fd_demo_integ.git
+ENV WATCHDOG_REPO_DIR=/app/.watchdog/fd_demo_integ
+
+ENTRYPOINT ["/app/scripts/watchdog.sh"]

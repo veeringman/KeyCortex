@@ -1,0 +1,61 @@
+[package]
+name = "wallet-wasm"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-wasm-bindgen = "0.6"
+gloo-timers = { version = "0.3", features = ["futures"] }
+gloo-net = { version = "0.6", features = ["http"] }
+gloo-storage = "0.3"
+gloo-utils = "0.2"
+gloo-console = "0.3"
+console_error_panic_hook = "0.1"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "AddEventListenerOptions",
+  "console",
+  "Document",
+  "Element",
+  "Event",
+  "EventTarget",
+  "HtmlElement",
+  "HtmlInputElement",
+  "HtmlSelectElement",
+  "HtmlTextAreaElement",
+  "HtmlImageElement",
+  "HtmlOptionElement",
+  "HtmlOptionsCollection",
+  "HtmlOptGroupElement",
+  "HtmlButtonElement",
+  "Headers",
+  "Location",
+  "MouseEvent",
+  "Node",
+  "NodeList",
+  "Request",
+  "RequestInit",
+  "RequestMode",
+  "Response",
+  "Window",
+  "CssStyleDeclaration",
+  "DomTokenList",
+  "Storage",
+  "Url",
+]
+
+[profile.release]
+opt-level = "s"
+lto = true

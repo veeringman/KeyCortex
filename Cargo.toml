@@ -8,6 +8,7 @@ members = [
   "crates/kc-chain-flowcortex",
   "crates/kc-auth-adapter",
   "services/wallet-service",
+  "ui/wallet-wasm",
 ]
 resolver = "2"
 

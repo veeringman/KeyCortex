@@ -15,6 +15,7 @@ const elements = {
   walletApp: document.getElementById("walletApp"),
   baseUrl: byId("baseUrl"),
   skinSelect: byId("skinSelect"),
+  formSelect: byId("formSelect"),
   skinCycleBtn: byId("skinCycleBtn"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   panels: Array.from(document.querySelectorAll(".panel")),
@@ -161,12 +162,32 @@ function setWalletState(newState) {
 document.addEventListener("DOMContentLoaded", () => {
   setWalletState("folded");
 
-  // Click overlay logo: folded → half → unfolded
+  // Click overlay logo: folded → half (single), half → fold (single), half → unfold (dblclick)
+  let foldClickTimer = null;
   elements.walletFoldToggle.addEventListener("click", (e) => {
     e.stopPropagation();
     if (walletFoldState === "folded") {
       setWalletState("half");
-    } else if (walletFoldState === "half") {
+      return;
+    }
+    if (walletFoldState === "half") {
+      // Wait briefly to see if it's a double-click
+      if (foldClickTimer) return; // already waiting
+      foldClickTimer = setTimeout(() => {
+        foldClickTimer = null;
+        if (walletFoldState === "half") {
+          setWalletState("folded");
+        }
+      }, 280);
+    }
+  });
+  elements.walletFoldToggle.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    if (foldClickTimer) {
+      clearTimeout(foldClickTimer);
+      foldClickTimer = null;
+    }
+    if (walletFoldState === "half") {
       setWalletState("unfolded");
     }
   });
@@ -262,6 +283,14 @@ function cycleSkin() {
   elements.skinSelect.value = next;
   applySkin(next);
   localStorage.setItem("kc_wallet_skin", next);
+}
+
+function applyForm(form) {
+  const root = elements.walletWindow;
+  root.classList.remove("form-folio", "form-electronic");
+  if (form !== "pocket") {
+    root.classList.add(`form-${form}`);
+  }
 }
 
 function setResult(target, payload, isError = false) {
@@ -638,6 +667,12 @@ async function loadWalletList() {
   }
   renderWalletList();
   renderWalletSelector();
+  // Highlight "New Wallet" only when no wallets exist
+  if (state.wallets.length === 0) {
+    elements.createWalletBtn.classList.add("primary");
+  } else {
+    elements.createWalletBtn.classList.remove("primary");
+  }
 }
 
 function getProfileWalletMap() {
@@ -957,6 +992,12 @@ function bindEvents() {
     localStorage.setItem("kc_wallet_skin", skin);
   });
 
+  elements.formSelect.addEventListener("change", () => {
+    const form = elements.formSelect.value;
+    applyForm(form);
+    localStorage.setItem("kc_wallet_form", form);
+  });
+
   elements.skinCycleBtn.addEventListener("click", cycleSkin);
 }
 
@@ -966,6 +1007,13 @@ async function main() {
     elements.skinSelect.value = savedSkin;
   }
   applySkin(elements.skinSelect.value);
+
+  // Restore form factor
+  const savedForm = localStorage.getItem("kc_wallet_form");
+  if (savedForm && elements.formSelect.querySelector(`option[value="${savedForm}"]`)) {
+    elements.formSelect.value = savedForm;
+  }
+  applyForm(elements.formSelect.value);
 
   // Load profiles and wallets
   loadProfiles();

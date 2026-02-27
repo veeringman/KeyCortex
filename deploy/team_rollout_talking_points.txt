@@ -1,0 +1,80 @@
+DEPLOYMENT TEMPLATE ROLLOUT — TALKING POINTS PER TEAM
+=====================================================
+
+What to share (same link for all teams):
+  https://github.com/veeringman/KeyCortex/tree/main/deploy
+
+Files they need:
+  1. setup_docker_template.sh          — deployment script (copy + fill placeholders)
+  2. docker-compose_template.yml       — compose file
+  3. Dockerfile_template               — multi-stage Rust build with layer caching
+  4. platform_port_allocation.md       — port assignments (read-only, don't modify)
+  5. example_authbuddy.md              — worked example showing how to fill in templates
+
+=============================================================================
+AUTHBUDDY IdP (ports 8100–8109, DB 5433)
+=============================================================================
+
+Here are deployment templates from KeyCortex. We've battle-tested them —
+Docker setup, layer caching, healthchecks, the works. Your ports are 8100
+(API), 8101 (UI), 5433 (Postgres). Copy the three template files into your
+repo, sed the placeholders (authbuddy, 8100, 5433, authbuddy-service), and
+you're running in 5 minutes. See example_authbuddy.md — it's filled in for
+you already. Your smoke tests should hit /health, /.well-known/jwks.json,
+and /auth/token. You don't need the WASM UI — just delete that service block.
+
+=============================================================================
+FLOWCORTEX L1 (ports 8200–8209, DB 5434)
+=============================================================================
+
+Same templates, your ports are 8200 (RPC/API), 8201 (explorer UI if you have
+one), 5434 (Postgres). Keep your P2P/gossip port (30303 or whatever) separate
+— that's not in this scheme. The template Dockerfile supports Rust 1.93 out
+of the box. Your healthcheck endpoint is probably /chain/status or /health —
+update HEALTH_ENDPOINT in the script. Add a smoke test for GET /chain/config
+since that's what KeyCortex calls.
+
+=============================================================================
+PROOFCORTEX (ports 8300–8309, DB 5435)
+=============================================================================
+
+Your ports are 8300 (API), 8303 (admin dashboard for proof queue metrics),
+5435 (Postgres). You probably don't need a JS or WASM frontend — delete those
+services from the compose file and set PORT_UI_JS=0 / PORT_UI_WASM=0. The
+STARK prover is CPU-heavy, so you may want to add deploy.resources.limits in
+the compose file for CPU/memory. Smoke test: POST /proofcortex/commitment
+should return a commitment hash.
+
+=============================================================================
+FORTRESSDIGITAL (ports 8400–8409, DB 5436)
+=============================================================================
+
+Your ports are 8400 (risk engine API), 8401 (policy dashboard UI), 5436
+(Postgres). The template includes inter-service env vars — you'll need
+KEYCORTEX_API_URL=http://keycortex-api:8080 since you call us for wallet
+status. Your smoke tests should hit POST /fortressdigital/wallet-status and
+your health endpoint. If you have a WASM UI, keep the ui-wasm service;
+otherwise delete it.
+
+=============================================================================
+TREASURY SETTLEMENT APP (ports 8500–8509, DB 5437)
+=============================================================================
+
+You're the orchestrator — you call everyone. Your ports are 8500 (backend
+API), 8501 (frontend), 5437 (Postgres). The template has all six inter-service
+URLs pre-configured as env vars. When we all run on the same Docker network
+(ecosystem-net), you can reach each platform by container name:
+keycortex-api:8080, authbuddy-api:8100, etc. Your smoke test is the full
+flow: login → create wallet → sign → submit.
+
+=============================================================================
+30-SECOND ELEVATOR PITCH (same for everyone)
+=============================================================================
+
+"We built deployment scripts for KeyCortex and hit every Docker gotcha —
+wrong mounts, stale configs, missing WASM builds, IPv6 healthcheck failures,
+layer cache busting. We fixed all of it and templatized it so you don't have
+to. Copy three files, run one sed command, run the script. You get:
+auto-install of Docker, layer-cached builds, health checks, smoke tests,
+auto-restore of configs from git, and a watchdog. Ports are pre-allocated
+so nothing collides when we compose the full ecosystem."

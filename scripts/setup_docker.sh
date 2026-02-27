@@ -140,28 +140,32 @@ fi
 # Ensure jq is available for smoke tests
 command -v jq >/dev/null 2>&1 || { info "Installing jq..."; sudo apt-get install -y jq; }
 
-# ─── Verify Docker config files ──────────────────────────────────────────────
-# These files are committed to git. Only generate if missing (fresh clone).
+# ─── Verify & restore Docker config files ────────────────────────────────────
+# These files are committed to git. Restore from HEAD if missing or corrupted
+# (e.g. previously overwritten by an older version of this script).
 step "Checking Docker configuration files"
 
-MISSING_FILES=false
+mkdir -p "$ROOT_DIR/deploy"
 
-for f in Dockerfile Dockerfile.watchdog docker-compose.yml deploy/nginx-wasm.conf .dockerignore; do
+DOCKER_CONFIG_FILES="Dockerfile Dockerfile.watchdog docker-compose.yml deploy/nginx-wasm.conf .dockerignore"
+
+for f in $DOCKER_CONFIG_FILES; do
   if [[ -f "$ROOT_DIR/$f" ]]; then
-    ok "$f (from repo)"
+    ok "$f ✓"
   else
-    warn "$f not found — this shouldn't happen after git clone. Check your checkout."
-    MISSING_FILES=true
+    warn "$f missing — restoring from git HEAD"
+    (cd "$ROOT_DIR" && git checkout HEAD -- "$f" 2>/dev/null) || {
+      err "Cannot restore $f. Run: git checkout -- $DOCKER_CONFIG_FILES"
+      exit 1
+    }
+    ok "$f restored"
   fi
 done
 
-if [[ "$MISSING_FILES" == true ]]; then
-  err "Missing Docker configuration files. Run: git checkout -- Dockerfile docker-compose.yml deploy/ .dockerignore Dockerfile.watchdog"
-  exit 1
-fi
-
-# Ensure deploy directory exists
-mkdir -p "$ROOT_DIR/deploy"
+# Also force-restore from git to undo any stale local edits from old script versions
+info "Ensuring Docker configs match committed versions…"
+(cd "$ROOT_DIR" && git checkout HEAD -- $DOCKER_CONFIG_FILES 2>/dev/null) || true
+ok "Docker configs verified"
 
 # ─── Build WASM frontend (required — pkg/ is gitignored) ─────────────────────
 step "Building WASM frontend"

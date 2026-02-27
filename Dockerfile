@@ -15,6 +15,33 @@ RUN apt-get update && apt-get install -y \
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 WORKDIR /src
+
+# Copy dependency manifests first for better layer caching
+COPY Cargo.toml Cargo.lock* ./
+COPY crates/kc-api-types/Cargo.toml crates/kc-api-types/
+COPY crates/kc-crypto/Cargo.toml crates/kc-crypto/
+COPY crates/kc-wallet-core/Cargo.toml crates/kc-wallet-core/
+COPY crates/kc-storage/Cargo.toml crates/kc-storage/
+COPY crates/kc-chain-client/Cargo.toml crates/kc-chain-client/
+COPY crates/kc-chain-flowcortex/Cargo.toml crates/kc-chain-flowcortex/
+COPY crates/kc-auth-adapter/Cargo.toml crates/kc-auth-adapter/
+COPY services/wallet-service/Cargo.toml services/wallet-service/
+COPY ui/wallet-wasm/Cargo.toml ui/wallet-wasm/
+
+# Create stub lib.rs for each crate so cargo can resolve the workspace and cache deps
+RUN mkdir -p crates/kc-api-types/src crates/kc-crypto/src crates/kc-wallet-core/src \
+             crates/kc-storage/src crates/kc-chain-client/src crates/kc-chain-flowcortex/src \
+             crates/kc-auth-adapter/src services/wallet-service/src ui/wallet-wasm/src && \
+    for d in crates/*/src services/*/src ui/wallet-wasm/src; do \
+      echo '' > "$d/lib.rs"; \
+    done && \
+    echo 'fn main() {}' > services/wallet-service/src/main.rs
+
+# Pre-build dependencies (this layer is cached as long as Cargo.toml/Cargo.lock don't change)
+RUN cargo build -p wallet-service --release 2>/dev/null || true && \
+    cargo build -p wallet-wasm --release 2>/dev/null || true
+
+# Now copy actual source code
 COPY . .
 
 # Build wallet-service (release)

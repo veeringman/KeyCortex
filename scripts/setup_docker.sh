@@ -42,6 +42,7 @@ BUILD_ONLY=false
 DO_DOWN=false
 FORCE_REBUILD=false
 WITH_WATCHDOG=true
+SKIP_BUILD=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -49,6 +50,7 @@ for arg in "$@"; do
     --build-only)   BUILD_ONLY=true ;;
     --down)         DO_DOWN=true ;;
     --rebuild)      FORCE_REBUILD=true ;;
+    --skip-build)   SKIP_BUILD=true ;;
     --no-watchdog)  WITH_WATCHDOG=false ;;
     --help|-h)
       echo "Usage: $0 [OPTIONS]"
@@ -58,6 +60,7 @@ for arg in "$@"; do
       echo "  --build-only    Build images only, don't start"
       echo "  --down          Stop all containers and exit"
       echo "  --rebuild       Force rebuild (no cache)"
+      echo "  --skip-build    Skip build, just (re)start containers"
       echo "  --no-watchdog   Don't start the watchdog"
       echo "  --help          Show this help"
       exit 0
@@ -439,20 +442,24 @@ DIGNORE
 ok ".dockerignore created"
 
 # ─── Build images ────────────────────────────────────────────────────────────
-step "Building Docker images"
+if [[ "$SKIP_BUILD" == true ]]; then
+  info "Skipping build (--skip-build). Using existing images."
+else
+  step "Building Docker images"
 
-BUILD_ARGS=""
-if [[ "$FORCE_REBUILD" == true ]]; then
-  BUILD_ARGS="--no-cache"
-fi
+  BUILD_ARGS=""
+  if [[ "$FORCE_REBUILD" == true ]]; then
+    BUILD_ARGS="--no-cache"
+  fi
 
-info "Building wallet-service image (this takes 5-15 min on first run)..."
-$COMPOSE_CMD build $BUILD_ARGS wallet-service
-ok "wallet-service image built"
+  info "Building wallet-service image (this takes 5-15 min on first run)..."
+  $COMPOSE_CMD build $BUILD_ARGS wallet-service
+  ok "wallet-service image built"
 
-if [[ "$BUILD_ONLY" == true ]]; then
-  ok "Build complete (--build-only). Run: docker compose up -d"
-  exit 0
+  if [[ "$BUILD_ONLY" == true ]]; then
+    ok "Build complete (--build-only). Run: docker compose up -d"
+    exit 0
+  fi
 fi
 
 # ─── Start containers ────────────────────────────────────────────────────────

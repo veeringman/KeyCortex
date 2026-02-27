@@ -486,7 +486,8 @@ JS_PID=$!
 
 info "Starting WASM frontend on port 8091..."
 cd "$ROOT_DIR"
-nohup python3 -m http.server 8091 --directory "$ROOT_DIR/ui/wallet-wasm" > "$ROOT_DIR/ui-wasm.log" 2>&1 &
+# Serve from ui/ parent so ../wallet-baseline/ relative paths resolve correctly
+nohup python3 -m http.server 8091 --directory "$ROOT_DIR/ui" > "$ROOT_DIR/ui-wasm.log" 2>&1 &
 WASM_PID=$!
 
 sleep 2
@@ -515,9 +516,9 @@ smoke "Readyz endpoint"   "http://127.0.0.1:8080/readyz"   "200"
 smoke "Version endpoint"  "http://127.0.0.1:8080/version"  "200"
 smoke "Wallet list"       "http://127.0.0.1:8080/wallet/list" "200"
 smoke "JS frontend"       "http://127.0.0.1:8090/"         "200"
-smoke "WASM frontend"     "http://127.0.0.1:8091/"         "200"
-smoke "WASM .js module"   "http://127.0.0.1:8091/pkg/wallet_wasm.js" "200"
-smoke "WASM .wasm binary" "http://127.0.0.1:8091/pkg/wallet_wasm_bg.wasm" "200"
+smoke "WASM frontend"     "http://127.0.0.1:8091/wallet-wasm/"         "200"
+smoke "WASM .js module"   "http://127.0.0.1:8091/wallet-wasm/pkg/wallet_wasm.js" "200"
+smoke "WASM .wasm binary" "http://127.0.0.1:8091/wallet-wasm/pkg/wallet_wasm_bg.wasm" "200"
 
 # Create test wallet
 info "Testing wallet creation..."
@@ -546,7 +547,8 @@ info "Configure git SSH keys for auto-push, or watchdog will log locally."
 git config --global user.name "KeyCortex Watchdog" 2>/dev/null || true
 git config --global user.email "watchdog@keycortex.local" 2>/dev/null || true
 
-nohup "$ROOT_DIR/scripts/watchdog.sh" --interval 60 > "$ROOT_DIR/watchdog.log" 2>&1 &
+nohup env KEYCORTEX_WASM_URL="http://127.0.0.1:8091/wallet-wasm" \
+  "$ROOT_DIR/scripts/watchdog.sh" --interval 60 > "$ROOT_DIR/watchdog.log" 2>&1 &
 WD_PID=$!
 ok "Watchdog PID: $WD_PID (logs: watchdog.log)"
 info "Debug errors pushed to: github.com:veeringman/fd_demo_integ.git → keycortex/"
@@ -562,7 +564,7 @@ cat <<EOF
 ║                                                                      ║
 ║  API Server:      http://127.0.0.1:8080                              ║
 ║  JS  Frontend:    http://127.0.0.1:8090                              ║
-║  WASM Frontend:   http://127.0.0.1:8091                              ║
+║  WASM Frontend:   http://127.0.0.1:8091/wallet-wasm/                ║
 ║                                                                      ║
 ║  Process IDs:                                                        ║
 ║    wallet-service: $WS_PID

@@ -83,13 +83,17 @@ services:
       retries: 2
 
   # ── WASM Frontend ────────────────────────────────────────────────────────
+  # Mounts entire ui/ tree so ../wallet-baseline/ relative paths resolve.
+  # nginx-wasm.conf sets root to /usr/share/nginx/html/wallet-wasm.
   ui-wasm:
     image: nginx:alpine
     container_name: keycortex-ui-wasm
     ports:
       - "8091:80"
     volumes:
-      - ./ui/wallet-wasm:/usr/share/nginx/html:ro
+      - ./ui:/usr/share/nginx/html:ro
+      - ./config:/usr/share/nginx/config:ro
+      - ./ui/wallet-wasm/assets:/usr/share/nginx/assets:ro
       - ./deploy/nginx-wasm.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     healthcheck:

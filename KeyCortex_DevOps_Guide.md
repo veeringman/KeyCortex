@@ -1,6 +1,6 @@
 # KeyCortex — Dev/Ops Setup, Build, Config & Deploy Guide
 
-> **Version:** 1.0 · **Last updated:** 2025-02-25
+> **Version:** 2.0 · **Last updated:** 2026-02-27
 > **Audience:** You (developer/operator)
 > **OS targets:** Ubuntu/Debian Linux (primary), Windows (cross-compile)
 > **MSRV:** Rust 1.85+ (edition 2024)
@@ -19,15 +19,18 @@
 8. [Data Directories](#8-data-directories)
 9. [Running Locally](#9-running-locally)
 10. [PostgreSQL Setup (Optional)](#10-postgresql-setup-optional)
-11. [UI (Static Frontend)](#11-ui-static-frontend)
-12. [Smoke Tests](#12-smoke-tests)
-13. [Linting & Formatting](#13-linting--formatting)
-14. [Release Build & Packaging](#14-release-build--packaging)
-15. [Systemd Service (Production Deploy)](#15-systemd-service-production-deploy)
-16. [Docker (Optional)](#16-docker-optional)
-17. [Backup & Restore](#17-backup--restore)
-18. [Troubleshooting](#18-troubleshooting)
-19. [Quick Reference Card](#19-quick-reference-card)
+11. [UI — JS Baseline Frontend](#11-ui--js-baseline-frontend)
+12. [UI — WASM Frontend (Pure Rust)](#12-ui--wasm-frontend-pure-rust)
+13. [Smoke Tests](#13-smoke-tests)
+14. [Linting & Formatting](#14-linting--formatting)
+15. [Release Build & Packaging](#15-release-build--packaging)
+16. [Systemd Service (Production Deploy)](#16-systemd-service-production-deploy)
+17. [Docker (Full Stack)](#17-docker-full-stack)
+18. [One-Command Setup Scripts](#18-one-command-setup-scripts)
+19. [Watchdog — Transactional Flow Monitor](#19-watchdog--transactional-flow-monitor)
+20. [Backup & Restore](#20-backup--restore)
+21. [Troubleshooting](#21-troubleshooting)
+22. [Quick Reference Card](#22-quick-reference-card)
 
 ---
 
@@ -540,9 +543,9 @@ If Postgres is configured but **unavailable** (network issue, crash):
 
 ---
 
-## 11. UI (Static Frontend)
+## 11. UI — JS Baseline Frontend
 
-The wallet UI is a static HTML/CSS/JS app served separately.
+The JS wallet UI is a static HTML/CSS/JS app (no build step) served separately.
 
 ### Dev server
 
@@ -605,7 +608,92 @@ server {
 
 ---
 
-## 12. Smoke Tests
+---
+
+## 12. UI — WASM Frontend (Pure Rust)
+
+The WASM frontend is a complete rewrite of the JS baseline in pure Rust, compiled to WebAssembly. It provides full feature parity with the JS version — all 18 API endpoints, 30+ event bindings, fold/theme/skin engine.
+
+### 12.1 Prerequisites
+
+```bash
+# Install wasm-pack (one-time)
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Add WASM target
+rustup target add wasm32-unknown-unknown
+```
+
+### 12.2 Build
+
+```bash
+# Dev build (fast, unoptimized)
+./scripts/build_wasm.sh
+
+# Release build (optimized, smaller .wasm)
+./scripts/build_wasm.sh --release
+```
+
+Output goes to `ui/wallet-wasm/pkg/` — generates `wallet_wasm.js` + `wallet_wasm_bg.wasm`.
+
+### 12.3 Dev Server
+
+```bash
+# From repo root (WASM index.html references ../wallet-baseline/ for shared CSS)
+cd /path/to/KeyCortex
+python3 -m http.server 8091 --directory ui/wallet-wasm
+```
+
+Open: `http://localhost:8091`
+
+### 12.4 Source Structure
+
+```
+ui/wallet-wasm/
+├── Cargo.toml        # cdylib + rlib, wasm-bindgen, web-sys, gloo-*
+├── index.html        # Entry point (loads ./pkg/wallet_wasm.js)
+├── src/
+│   ├── lib.rs        # WASM entry (#[wasm_bindgen(start)])
+│   ├── api.rs        # HTTP client (fetch to wallet-service)
+│   ├── dom.rs        # DOM element cache & helpers
+│   ├── events.rs     # All event bindings (click, input, focus)
+│   ├── fold.rs       # Fold state machine (Folded/Half/Unfolded)
+│   ├── theme.rs      # Skin/form-factor engine (CSS var injection)
+│   ├── wallet_ops.rs # 11 wallet API operations
+│   ├── wallet_list.rs# Wallet list rendering
+│   ├── platform.rs   # Platform integration handlers
+│   ├── profile.rs    # Profile management
+│   ├── state.rs      # Local state persistence
+│   └── icons.rs      # Icon manifest loader
+└── pkg/              # Build output (git-ignored)
+    ├── wallet_wasm.js
+    └── wallet_wasm_bg.wasm
+```
+
+### 12.5 Production: serve with nginx
+
+Use `deploy/nginx-wasm.conf` which sets the correct `application/wasm` MIME type:
+
+```bash
+sudo cp deploy/nginx-wasm.conf /etc/nginx/sites-available/keycortex-wasm
+sudo ln -sf /etc/nginx/sites-available/keycortex-wasm /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 12.6 Key Differences from JS Version
+
+| Aspect | JS Baseline | WASM Frontend |
+|--------|-------------|---------------|
+| Language | JavaScript (1035 lines) | Rust (2200+ lines, 12 modules) |
+| Build step | None | wasm-pack (~15s dev, ~30s release) |
+| Bundle size | ~50KB (app.js + styles.css) | ~250KB (.wasm + .js glue) |
+| Shared assets | styles.css, themes.json, icons | Same (referenced from ../wallet-baseline/) |
+| API parity | Baseline | 100% — all 18 endpoints |
+| Event parity | Baseline | 100% — all 30+ bindings |
+
+---
+
+## 13. Smoke Tests
 
 ### Run the built-in smoke script
 
@@ -660,7 +748,7 @@ echo "All smoke tests passed"
 
 ---
 
-## 13. Linting & Formatting
+## 14. Linting & Formatting
 
 ### Format
 
@@ -687,7 +775,7 @@ cargo test --workspace
 
 ---
 
-## 14. Release Build & Packaging
+## 15. Release Build & Packaging
 
 ### Build optimized binary
 
@@ -760,9 +848,9 @@ echo "Package: dist/${DIST}.zip"
 
 ---
 
-## 15. Systemd Service (Production Deploy)
+## 16. Systemd Service (Production Deploy)
 
-### 15.1 Create system user
+### 16.1 Create system user
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin -d /opt/keycortex keycortex
@@ -774,7 +862,7 @@ sudo chown -R keycortex:keycortex /opt/keycortex
 sudo chmod 700 /opt/keycortex/data/keystore/rocksdb
 ```
 
-### 15.2 Environment file
+### 16.2 Environment file
 
 ```bash
 sudo tee /opt/keycortex/config/wallet-service.env <<'EOF'
@@ -798,7 +886,7 @@ sudo chmod 600 /opt/keycortex/config/wallet-service.env
 sudo chown keycortex:keycortex /opt/keycortex/config/wallet-service.env
 ```
 
-### 15.3 Systemd unit file
+### 16.3 Systemd unit file
 
 ```bash
 sudo tee /etc/systemd/system/keycortex-wallet.service <<'EOF'
@@ -835,7 +923,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-### 15.4 Enable and start
+### 16.4 Enable and start
 
 ```bash
 sudo systemctl daemon-reload
@@ -844,7 +932,7 @@ sudo systemctl start keycortex-wallet
 sudo systemctl status keycortex-wallet
 ```
 
-### 15.5 Logs
+### 16.5 Logs
 
 ```bash
 sudo journalctl -u keycortex-wallet -f              # Follow live
@@ -852,7 +940,7 @@ sudo journalctl -u keycortex-wallet --since today    # Today's logs
 sudo journalctl -u keycortex-wallet -n 100           # Last 100 lines
 ```
 
-### 15.6 Common systemd operations
+### 16.6 Common systemd operations
 
 ```bash
 sudo systemctl restart keycortex-wallet    # Restart
@@ -862,120 +950,256 @@ sudo systemctl status keycortex-wallet     # Status + last log lines
 
 ---
 
-## 16. Docker (Optional)
+## 17. Docker (Full Stack)
 
-### Dockerfile
+KeyCortex provides a complete Docker stack with multi-stage builds, health checks, and optional Postgres + watchdog services.
 
-```dockerfile
-# Stage 1: Build
-FROM rust:1.85-bookworm AS builder
+### 17.1 Files
 
-RUN apt-get update && apt-get install -y \
-    clang llvm libclang-dev pkg-config libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Multi-stage build: `rust:1.85-bookworm` → `debian:bookworm-slim` (builds API + WASM) |
+| `Dockerfile.watchdog` | Lightweight monitoring container (bash, curl, jq, git) |
+| `docker-compose.yml` | Full stack orchestration (5 services) |
+| `deploy/nginx-wasm.conf` | Nginx config with correct WASM MIME types |
+| `.dockerignore` | Excludes `target/`, `data/`, `.git/`, logs |
 
-WORKDIR /src
-COPY . .
-RUN cargo build -p wallet-service --release && \
-    strip target/release/wallet-service
-
-# Stage 2: Runtime
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -r -s /usr/sbin/nologin keycortex
-WORKDIR /app
-
-COPY --from=builder /src/target/release/wallet-service /app/
-COPY migrations /app/migrations
-COPY ui/wallet-baseline /app/ui
-
-RUN mkdir -p /app/data/keystore/rocksdb && \
-    chown -R keycortex:keycortex /app
-
-USER keycortex
-
-ENV RUST_LOG=info
-ENV KEYCORTEX_KEYSTORE_PATH=/app/data/keystore/rocksdb
-ENV KEYCORTEX_POSTGRES_MIGRATIONS_DIR=/app/migrations/postgres
-
-EXPOSE 8080
-
-HEALTHCHECK --interval=10s --timeout=3s \
-  CMD curl -f http://localhost:8080/readyz || exit 1
-
-ENTRYPOINT ["/app/wallet-service"]
-```
-
-### Build and run
+### 17.2 Quick Start
 
 ```bash
-docker build -t keycortex:latest .
-docker run -d \
-  --name keycortex \
-  -p 8080:8080 \
-  -v keycortex-data:/app/data \
-  -e AUTHBUDDY_JWT_SECRET=my-secret \
-  keycortex:latest
-```
-
-### Docker Compose (with Postgres)
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  wallet-service:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - keycortex-data:/app/data
-    environment:
-      - RUST_LOG=info
-      - AUTHBUDDY_JWT_SECRET=dev-secret
-      - DATABASE_URL=postgres://keycortex:keycortex@postgres:5432/keycortex
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: keycortex
-      POSTGRES_PASSWORD: keycortex
-      POSTGRES_DB: keycortex
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-LINE", "pg_isready -U keycortex"]
-      interval: 5s
-      timeout: 5s
-      retries: 3
-
-  ui:
-    image: nginx:alpine
-    ports:
-      - "8090:80"
-    volumes:
-      - ./ui/wallet-baseline:/usr/share/nginx/html:ro
-
-volumes:
-  keycortex-data:
-  pg-data:
-```
-
-```bash
+# Core services only (API + JS UI + WASM UI)
 docker compose up -d
+
+# With PostgreSQL
+docker compose --profile postgres up -d
+
+# Everything (API + Postgres + both UIs + watchdog)
+docker compose --profile full up -d
+```
+
+### 17.3 Services
+
+| Service | Container | Port | Description |
+|---------|-----------|------|-------------|
+| `wallet-service` | `keycortex-api` | 8080 | Rust API server |
+| `postgres` | `keycortex-postgres` | 5432 | PostgreSQL 16 (profile: `postgres`) |
+| `ui-js` | `keycortex-ui-js` | 8090 | JS baseline via nginx |
+| `ui-wasm` | `keycortex-ui-wasm` | 8091 | WASM frontend via nginx |
+| `watchdog` | `keycortex-watchdog` | — | Flow monitor (profile: `watchdog`) |
+
+### 17.4 Build & Run
+
+```bash
+# Build all images
+docker compose build
+
+# Force rebuild (no cache)
+docker compose build --no-cache
+
+# Start with environment overrides
+AUTHBUDDY_JWT_SECRET=my-prod-secret \
+DATABASE_URL=postgres://keycortex:secret@postgres:5432/keycortex \
+docker compose --profile postgres up -d
+
+# View logs
 docker compose logs -f wallet-service
+docker compose logs -f watchdog
+```
+
+### 17.5 Volumes
+
+| Volume | Mounted at | Contains |
+|--------|-----------|----------|
+| `keycortex-data` | `/app/data` | RocksDB keystore (encrypted keys) |
+| `pg-data` | `/var/lib/postgresql/data` | PostgreSQL data |
+| `watchdog-data` | `/app/.watchdog` | Watchdog debug repo clone |
+
+### 17.6 Health Checks
+
+All services have Docker health checks:
+- **wallet-service**: `curl -sf http://localhost:8080/readyz` (10s interval, 15s start period)
+- **postgres**: `pg_isready -U keycortex` (5s interval)
+- **ui-js / ui-wasm**: `wget -qO- http://localhost/index.html` (15s interval)
+
+### 17.7 Production Notes
+
+```bash
+# Deploy with specific image tag
+docker compose -f docker-compose.yml build
+docker tag keycortex-wallet-service:latest registry.example.com/keycortex:v0.1.0
+docker push registry.example.com/keycortex:v0.1.0
+
+# Backup Docker volumes
+docker run --rm -v keycortex-data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/keycortex-data-backup.tar.gz -C /data .
 ```
 
 ---
 
-## 17. Backup & Restore
+## 18. One-Command Setup Scripts
+
+### 18.1 Bare-Metal Setup
+
+The `scripts/setup_baremetal.sh` script handles the **entire setup** from a fresh Ubuntu 20.04+ machine:
+
+```bash
+chmod +x scripts/setup_baremetal.sh
+
+# Interactive (asks about Postgres)
+./scripts/setup_baremetal.sh
+
+# Non-interactive options
+./scripts/setup_baremetal.sh --with-postgres      # Include Postgres
+./scripts/setup_baremetal.sh --no-postgres         # Skip Postgres (RocksDB only)
+./scripts/setup_baremetal.sh --install-systemd     # Also install systemd unit
+./scripts/setup_baremetal.sh --dev                 # Debug build (faster)
+./scripts/setup_baremetal.sh --skip-build          # Use existing binary
+```
+
+**What it does:**
+1. Installs system dependencies (clang, llvm, libclang-dev, libssl-dev, etc.)
+2. Installs/updates Rust toolchain via rustup (requires ≥1.85)
+3. Installs wasm-pack + wasm32-unknown-unknown target
+4. Builds wallet-service (release mode) + strips binary
+5. Builds WASM frontend via wasm-pack
+6. Creates data directories + `.env` config file
+7. Optionally sets up PostgreSQL (user, database, migrations)
+8. Optionally installs systemd service unit
+9. Generates nginx config → `deploy/nginx-keycortex.conf`
+10. Starts wallet-service (:8080) + JS UI (:8090) + WASM UI (:8091) + watchdog
+11. Runs smoke tests (health, wallet create, frontend checks)
+12. Creates `stop_keycortex.sh` for easy shutdown
+
+### 18.2 Docker Setup
+
+The `scripts/setup_docker.sh` script sets up everything via Docker:
+
+```bash
+chmod +x scripts/setup_docker.sh
+
+# Full setup + launch
+./scripts/setup_docker.sh
+
+# Without Postgres
+./scripts/setup_docker.sh --no-postgres
+
+# Build only (don't start)
+./scripts/setup_docker.sh --build-only
+
+# Stop everything
+./scripts/setup_docker.sh --down
+
+# Force rebuild (no cache)
+./scripts/setup_docker.sh --rebuild
+
+# Without watchdog
+./scripts/setup_docker.sh --no-watchdog
+```
+
+**What it does:**
+1. Checks/installs Docker Engine + Docker Compose
+2. Generates `Dockerfile`, `Dockerfile.watchdog`, `docker-compose.yml` if missing
+3. Builds wallet-service image (multi-stage: Rust build + WASM build → slim runtime)
+4. Starts all containers with `docker compose`
+5. Waits for wallet-service health check
+6. Runs smoke tests
+7. Displays connection info + container management commands
+
+---
+
+## 19. Watchdog — Transactional Flow Monitor
+
+The `scripts/watchdog.sh` script continuously probes **every transactional API flow** and logs detailed JSON error reports to the integration debug repo.
+
+### 19.1 What It Monitors
+
+| Flow | Probes |
+|------|--------|
+| **Health** | `/health`, `/readyz`, `/startupz`, `/version`, DB fallback counters, JWKS status |
+| **Wallet** | create → list → rename → balance |
+| **Signing** | sign (purpose=auth), sign (purpose=tx) |
+| **Auth** | challenge → sign challenge → verify |
+| **Submit** | nonce → submit (with Idempotency-Key) → tx status |
+| **Integrations** | FortressDigital context + wallet-status, ProofCortex commitment, chain config |
+| **Frontend** | JS index + app.js, WASM index + .js module + .wasm binary |
+
+### 19.2 Usage
+
+```bash
+chmod +x scripts/watchdog.sh
+
+# Continuous monitoring (60s interval)
+./scripts/watchdog.sh
+
+# Single pass (good for cron)
+./scripts/watchdog.sh --once
+
+# Custom interval
+./scripts/watchdog.sh --interval 30
+
+# Background daemon
+./scripts/watchdog.sh --daemon
+```
+
+### 19.3 Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEYCORTEX_API_URL` | `http://127.0.0.1:8080` | API base URL |
+| `KEYCORTEX_JS_URL` | `http://127.0.0.1:8090` | JS frontend URL |
+| `KEYCORTEX_WASM_URL` | `http://127.0.0.1:8091` | WASM frontend URL |
+| `WATCHDOG_INTERVAL` | `60` | Seconds between cycles |
+| `WATCHDOG_PUSH_EVERY` | `5` | Push to git every N cycles (errors push immediately) |
+| `GIT_REMOTE_URL` | `git@github.com:veeringman/fd_demo_integ.git` | Debug repo |
+| `WATCHDOG_REPO_DIR` | `.watchdog/fd_demo_integ` | Local clone path |
+
+### 19.4 Error Logging
+
+On any probe failure, the watchdog writes a JSON error file:
+
+```json
+{
+  "timestamp": "2026-02-27T12:00:00Z",
+  "flow": "auth",
+  "step": "verify",
+  "url": "http://127.0.0.1:8080",
+  "http_status": 500,
+  "expected_status": 200,
+  "response_body": "{\"error\":\"challenge expired\"}",
+  "details": "Auth verify failed",
+  "latency_seconds": "0.042",
+  "hostname": "prod-wallet-01",
+  "cycle": 42
+}
+```
+
+### 19.5 Debug Repo Structure
+
+Errors are pushed to `github.com:veeringman/fd_demo_integ.git`:
+
+```
+keycortex/
+├── README.md                          # Auto-generated docs
+├── errors/                            # Individual error files
+│   └── 20260227-120000_auth_verify.json
+├── health/
+│   └── latest.json                    # Latest /health snapshot
+├── summary/
+│   ├── latest.json                    # Most recent cycle result
+│   └── cycle_20260227-120000.json     # Archived error cycles
+└── flows/                             # Reserved for flow traces
+```
+
+### 19.6 Push Behavior
+
+- **On error**: Immediately commits + pushes to debug repo
+- **On healthy cycle**: Pushes every `WATCHDOG_PUSH_EVERY` cycles (default: 5)
+- **On shutdown** (Ctrl+C / SIGTERM): Final push before exit
+- If git push fails (no SSH key, network issue), watchdog continues logging locally
+
+---
+
+## 20. Backup & Restore
 
 ### RocksDB Backup
 
@@ -1017,7 +1241,7 @@ psql -U keycortex -h localhost keycortex < keycortex-pg-backup.sql
 
 ---
 
-## 18. Troubleshooting
+## 21. Troubleshooting
 
 ### Build Errors
 
@@ -1029,6 +1253,8 @@ psql -U keycortex -h localhost keycortex < keycortex-pg-backup.sql
 | `linker 'cc' not found` | Missing GCC | `sudo apt install build-essential` |
 | Linking errors with `-lssl` | Missing OpenSSL dev headers | `sudo apt install libssl-dev` |
 | Windows cross: `cannot find -lstdc++` | Missing mingw C++ | `sudo apt install g++-mingw-w64-x86-64` |
+| wasm-pack: `wasm32-unknown-unknown` missing | Target not installed | `rustup target add wasm32-unknown-unknown` |
+| WASM build: `HtmlOptionsCollection` not found | Missing web-sys feature | Check `ui/wallet-wasm/Cargo.toml` web-sys features list |
 
 ### Runtime Errors
 
@@ -1064,45 +1290,61 @@ RUST_LOG=wallet_service=debug,tower_http=info
 
 ---
 
-## 19. Quick Reference Card
+## 22. Quick Reference Card
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║  KeyCortex Dev/Ops Quick Reference                          ║
-╠══════════════════════════════════════════════════════════════╣
-║                                                              ║
-║  BUILD                                                       ║
-║    cargo build -p wallet-service              (debug)        ║
-║    cargo build -p wallet-service --release    (production)   ║
-║    ./scripts/cross_build_windows.sh release   (win64)        ║
-║                                                              ║
-║  RUN                                                         ║
-║    RUST_LOG=info cargo run -p wallet-service  (dev)          ║
-║    RUST_LOG=info ./target/release/wallet-service (prod)      ║
-║                                                              ║
-║  TEST                                                        ║
-║    cargo test --workspace                                    ║
-║    cargo clippy --workspace -- -D warnings                   ║
-║    ./scripts/smoke_db_fallback.sh                            ║
-║                                                              ║
-║  HEALTH CHECK                                                ║
-║    curl http://localhost:8080/health | jq .                  ║
-║    curl http://localhost:8080/readyz | jq .ready             ║
-║                                                              ║
-║  UI                                                          ║
-║    cd ui/wallet-baseline && python3 -m http.server 8090      ║
-║                                                              ║
-║  DEPLOY                                                      ║
-║    sudo systemctl start keycortex-wallet                     ║
-║    sudo journalctl -u keycortex-wallet -f                    ║
-║                                                              ║
-║  BACKUP                                                      ║
-║    tar czf backup.tar.gz data/keystore/rocksdb               ║
-║                                                              ║
-║  PORTS                                                       ║
-║    8080  wallet-service API                                  ║
-║    8090  UI (dev server)                                     ║
-║    5432  PostgreSQL (optional)                               ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║  KeyCortex Dev/Ops Quick Reference  (v2.0 — 2026-02-27)        ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  ONE-COMMAND SETUP                                               ║
+║    ./scripts/setup_baremetal.sh              (bare metal)        ║
+║    ./scripts/setup_docker.sh                 (Docker)            ║
+║                                                                  ║
+║  BUILD                                                           ║
+║    cargo build -p wallet-service              (debug)            ║
+║    cargo build -p wallet-service --release    (production)       ║
+║    ./scripts/build_wasm.sh                    (WASM dev)         ║
+║    ./scripts/build_wasm.sh --release          (WASM prod)        ║
+║    ./scripts/cross_build_windows.sh release   (win64)            ║
+║                                                                  ║
+║  RUN                                                             ║
+║    RUST_LOG=info cargo run -p wallet-service  (dev)              ║
+║    RUST_LOG=info ./target/release/wallet-service (prod)          ║
+║                                                                  ║
+║  DOCKER                                                          ║
+║    docker compose up -d                       (core)             ║
+║    docker compose --profile postgres up -d    (+ Postgres)       ║
+║    docker compose --profile full up -d        (everything)       ║
+║    docker compose down                        (stop all)         ║
+║                                                                  ║
+║  TEST & MONITOR                                                  ║
+║    cargo test --workspace                                        ║
+║    cargo clippy --workspace -- -D warnings                       ║
+║    ./scripts/smoke_db_fallback.sh                                ║
+║    ./scripts/watchdog.sh                      (flow monitor)     ║
+║    ./scripts/watchdog.sh --once               (single pass)      ║
+║                                                                  ║
+║  HEALTH CHECK                                                    ║
+║    curl http://localhost:8080/health | jq .                      ║
+║    curl http://localhost:8080/readyz | jq .ready                 ║
+║                                                                  ║
+║  UI                                                              ║
+║    JS:   http://localhost:8090  (wallet-baseline)                ║
+║    WASM: http://localhost:8091  (wallet-wasm)                    ║
+║                                                                  ║
+║  DEPLOY                                                          ║
+║    sudo systemctl start keycortex-wallet                         ║
+║    sudo journalctl -u keycortex-wallet -f                        ║
+║                                                                  ║
+║  BACKUP                                                          ║
+║    tar czf backup.tar.gz data/keystore/rocksdb                   ║
+║                                                                  ║
+║  PORTS                                                           ║
+║    8080  wallet-service API                                      ║
+║    8090  JS baseline UI                                          ║
+║    8091  WASM frontend UI                                        ║
+║    5432  PostgreSQL (optional)                                   ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
 ```

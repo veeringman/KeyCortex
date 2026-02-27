@@ -1,6 +1,6 @@
 # KeyCortex — Team Handoff & Knowledge Transfer Document
 
-> **Version:** 1.0 · **Date:** 2026-02-27
+> **Version:** 1.1 · **Date:** 2026-02-27
 > **From:** KeyCortex Core Team
 > **To:** Integration, QA, DevOps, and Partner Engineering Teams
 > **Repository:** `github.com:veeringman/KeyCortex.git`
@@ -25,8 +25,9 @@
 13. [Docker Stack](#13-docker-stack)
 14. [Integration Points (External Systems)](#14-integration-points-external-systems)
 15. [Known Gaps & Roadmap](#15-known-gaps--roadmap)
-16. [Troubleshooting Checklist](#16-troubleshooting-checklist)
-17. [Contacts & Resources](#17-contacts--resources)
+16. [Engineering Learnings & Gotchas](#16-engineering-learnings--gotchas)
+17. [Troubleshooting Checklist](#17-troubleshooting-checklist)
+18. [Contacts & Resources](#18-contacts--resources)
 
 ---
 
@@ -685,7 +686,75 @@ docker compose ps                             # Status
 
 ---
 
-## 16. Troubleshooting Checklist
+## 16. Engineering Learnings & Gotchas
+
+Hard-won lessons from building, deploying, and operating KeyCortex. Share these with your team to avoid repeating mistakes.
+
+### 16.1 Build & Compilation
+
+| Lesson | Detail |
+|--------|--------|
+| **Avoid repeat `librocksdb-sys` rebuilds** | `cargo run` can trigger long rebuilds when profile/artifact state changes. Prefer running the compiled binary directly: `target/debug/wallet-service` or `target/release/wallet-service`. |
+| **Use persistent cargo cache** | Set `export CARGO_TARGET_DIR="$HOME/.cache/keycortex/cargo-target"` to reuse build artifacts across sessions. |
+| **Use the cached launcher** | `./scripts/run_wallet_service_cached.sh` runs the cached binary if available, only builds when needed. Use `--rebuild` to force refresh. |
+| **Docker image tag must match rustc** | The workspace uses `edition = "2024"` with dependencies requiring rustc ≥1.93. The Dockerfile must use `rust:1.93-bookworm`, not older tags. Symptom: `exit code: 101` during `cargo build` in Docker. |
+| **Docker layer caching** | The Dockerfile copies `Cargo.toml`/`Cargo.lock` first and pre-builds deps in a separate layer. Source-only changes reuse the cached deps (saves 5-10 min). Any `Cargo.toml` edit triggers full rebuild. |
+| **`tokio_postgres::Client` is not `Clone`** | Don't `#[derive(Clone)]` on structs holding `tokio_postgres::Client`. Use `Arc<PostgresRepository>` at `AppState` boundaries instead. |
+
+### 16.2 WASM Frontend
+
+| Lesson | Detail |
+|--------|--------|
+| **Relative paths need parent directory** | WASM `index.html` uses `../wallet-baseline/styles.css`, `../../config/icon-manifest.json`, etc. The serving root must include the parent `ui/` directory, not just `ui/wallet-wasm/`. |
+| **Docker: use nginx alias directives** | `nginx-wasm.conf` sets `root` to `wallet-wasm/` and uses `alias` for `/wallet-baseline/`, `/config/`, `/assets/` to resolve cross-directory references. |
+| **Bare-metal: serve from `ui/`** | `python3 -m http.server 8091 --directory ui/` — the WASM app is then at `http://localhost:8091/wallet-wasm/`. |
+| **WASM MIME type** | Nginx default config doesn't serve `.wasm` files with `application/wasm`. Always use `deploy/nginx-wasm.conf` or add the MIME type explicitly. Without it: `TypeError: Failed to execute 'compile'`. |
+| **CSS/theme parity** | WASM frontend shares `styles.css` and `themes.json` from `wallet-baseline/`. Any CSS changes must be tested on both UIs. |
+
+### 16.3 Storage & Database
+
+| Lesson | Detail |
+|--------|--------|
+| **RocksDB LOCK file** | Only one process can open a RocksDB directory. If the service crashes, the LOCK file may remain. Kill any orphan process or delete the LOCK file before restarting. |
+| **Postgres is optional, not required** | Service runs fine with RocksDB only. When Postgres goes down, fallback counters increment (visible on `/health`) but all operations continue. |
+| **Postgres auth: `peer` vs `md5`** | Ubuntu default `pg_hba.conf` uses `peer` auth (Unix socket identity). For TCP connections, change to `md5` or `scram-sha-256`. |
+| **Migrations auto-run** | SQL migrations from `migrations/postgres/` run automatically at startup when `DATABASE_URL` is set. No manual step needed. |
+
+### 16.4 Deployment & Operations
+
+| Lesson | Detail |
+|--------|--------|
+| **Port 8080 is hardcoded** | MVP has no `--port` flag. Check `lsof -i :8080` before starting. |
+| **`--skip-build` for config changes** | After editing nginx configs, docker-compose.yml, or env vars, use `./scripts/setup_docker.sh --skip-build` to restart without the 10-min Rust build. |
+| **Watchdog needs SSH keys for git push** | Without `~/.ssh/id_*` access to `fd_demo_integ` repo, watchdog still logs locally but can't push. Not fatal — errors are retained in `$WATCHDOG_REPO_DIR/keycortex/`. |
+| **Smoke test first** | After any deployment, run: `curl -s localhost:8080/health \| jq .` — this shows storage mode, auth status, JWKS state, and fallback counters in one call. |
+
+### 16.5 Development Workflow (Recommended)
+
+```bash
+# 1. Run tests
+cargo test -p wallet-service
+
+# 2. Start service via cache (avoids unnecessary rebuilds)
+./scripts/run_wallet_service_cached.sh
+
+# 3. Smoke-check diagnostics
+curl -sS http://127.0.0.1:8080/health | jq .
+curl -sS http://127.0.0.1:8080/readyz | jq .
+curl -sS http://127.0.0.1:8080/startupz | jq .
+
+# 4. Rebuild only when code changed
+./scripts/run_wallet_service_cached.sh --rebuild
+```
+
+Expected baseline results:
+- All three diagnostic endpoints return HTTP 200
+- `storage_mode` is `rocksdb-only` unless `DATABASE_URL` is set
+- `auth_ready` is `true` when `AUTHBUDDY_JWT_SECRET` is configured
+
+---
+
+## 17. Troubleshooting Checklist
 
 ### "It won't build"
 
@@ -723,7 +792,7 @@ docker compose ps                             # Status
 
 ---
 
-## 17. Contacts & Resources
+## 18. Contacts & Resources
 
 ### Repositories
 

@@ -163,6 +163,28 @@ fi
 # Ensure deploy directory exists
 mkdir -p "$ROOT_DIR/deploy"
 
+# ─── Build WASM frontend (required — pkg/ is gitignored) ─────────────────────
+step "Building WASM frontend"
+
+if [[ -f "$ROOT_DIR/ui/wallet-wasm/pkg/wallet_wasm_bg.wasm" ]] && [[ "$FORCE_REBUILD" != true ]]; then
+  ok "WASM pkg/ already built (use --rebuild to force)"
+else
+  if command -v wasm-pack >/dev/null 2>&1; then
+    info "Building WASM frontend with wasm-pack..."
+    rustup target add wasm32-unknown-unknown 2>/dev/null || true
+    (cd "$ROOT_DIR" && wasm-pack build ui/wallet-wasm --target web --release \
+      --out-dir "$ROOT_DIR/ui/wallet-wasm/pkg" --no-typescript)
+    ok "WASM frontend built → ui/wallet-wasm/pkg/"
+  else
+    info "wasm-pack not installed. Installing..."
+    curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    rustup target add wasm32-unknown-unknown 2>/dev/null || true
+    (cd "$ROOT_DIR" && wasm-pack build ui/wallet-wasm --target web --release \
+      --out-dir "$ROOT_DIR/ui/wallet-wasm/pkg" --no-typescript)
+    ok "WASM frontend built → ui/wallet-wasm/pkg/"
+  fi
+fi
+
 # ─── Build images ────────────────────────────────────────────────────────────
 if [[ "$SKIP_BUILD" == true ]]; then
   info "Skipping build (--skip-build). Using existing images."

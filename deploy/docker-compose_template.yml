@@ -1,0 +1,133 @@
+###############################################################################
+# {{PLATFORM_NAME}} — Docker Compose Template
+#
+# TEMPLATE — Copy and customise. Search-replace all {{...}} placeholders.
+#
+# Port allocation: see deploy/platform_port_allocation.md
+#
+# Usage:
+#   docker compose up -d                          # Core services (API + UIs)
+#   docker compose --profile postgres up -d       # With PostgreSQL
+#   docker compose --profile full up -d           # Everything incl. watchdog
+#   docker compose logs -f {{PLATFORM_SLUG}}-api  # Follow API logs
+#   docker compose down                           # Stop all
+###############################################################################
+
+services:
+  # ── API Server ──────────────────────────────────────────────────────────────
+  {{PLATFORM_SLUG}}-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {{PLATFORM_SLUG}}-api
+    ports:
+      - "{{PORT_API}}:{{PORT_API}}"
+    volumes:
+      - {{PLATFORM_SLUG}}-data:/app/data
+    environment:
+      - RUST_LOG=info
+      # CUSTOMISE: Add platform-specific env vars below
+      # - DATABASE_URL=${DATABASE_URL:-}
+      # - AUTHBUDDY_JWT_SECRET=${AUTHBUDDY_JWT_SECRET:-dev-secret}
+      # Inter-service URLs (see port allocation doc)
+      - KEYCORTEX_API_URL=${KEYCORTEX_API_URL:-http://keycortex-api:8080}
+      - AUTHBUDDY_API_URL=${AUTHBUDDY_API_URL:-http://authbuddy-api:8100}
+      - FLOWCORTEX_RPC_URL=${FLOWCORTEX_RPC_URL:-http://flowcortex-api:8200}
+      - PROOFCORTEX_API_URL=${PROOFCORTEX_API_URL:-http://proofcortex-api:8300}
+      - FORTRESS_API_URL=${FORTRESS_API_URL:-http://fortress-api:8400}
+      - TREASURY_API_URL=${TREASURY_API_URL:-http://treasury-api:8500}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:{{PORT_API}}/readyz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: {{PLATFORM_SLUG}}-db
+    ports:
+      - "{{PORT_DB}}:5432"
+    environment:
+      POSTGRES_USER: {{PLATFORM_SLUG}}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-{{PLATFORM_SLUG}}}
+      POSTGRES_DB: {{PLATFORM_SLUG}}
+    volumes:
+      - {{PLATFORM_SLUG}}-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{PLATFORM_SLUG}}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles:
+      - postgres
+      - full
+
+  # ── JS Frontend (if applicable) ────────────────────────────────────────────
+  # CUSTOMISE: Remove this service if your platform has no JS frontend.
+  ui-js:
+    image: nginx:alpine
+    container_name: {{PLATFORM_SLUG}}-ui-js
+    ports:
+      - "{{PORT_UI_JS}}:80"
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/index.html"]
+      interval: 15s
+      timeout: 3s
+      retries: 2
+
+  # ── WASM Frontend (if applicable) ──────────────────────────────────────────
+  # CUSTOMISE: Remove this service if your platform has no WASM frontend.
+  # Mount the entire ui/ tree so relative paths (../wallet-baseline/) resolve.
+  # nginx config sets root to the WASM crate dir; aliases serve shared assets.
+  ui-wasm:
+    image: nginx:alpine
+    container_name: {{PLATFORM_SLUG}}-ui-wasm
+    ports:
+      - "{{PORT_UI_WASM}}:80"
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+      - ./deploy/nginx-wasm.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      # Use 127.0.0.1 (not localhost) — Alpine wget prefers IPv6, but if the
+      # nginx config is mounted :ro, the IPv6 setup script can't run.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/index.html"]
+      interval: 15s
+      timeout: 3s
+      retries: 2
+
+  # ── Watchdog (optional) ────────────────────────────────────────────────────
+  # CUSTOMISE: Remove or adapt for your monitoring needs.
+  # watchdog:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.watchdog
+  #   container_name: {{PLATFORM_SLUG}}-watchdog
+  #   environment:
+  #     - API_URL=http://{{PLATFORM_SLUG}}-api:{{PORT_API}}
+  #     - WATCHDOG_INTERVAL=${WATCHDOG_INTERVAL:-60}
+  #   depends_on:
+  #     {{PLATFORM_SLUG}}-api:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   profiles:
+  #     - watchdog
+  #     - full
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  {{PLATFORM_SLUG}}-data:
+    driver: local
+  {{PLATFORM_SLUG}}-pg-data:
+    driver: local

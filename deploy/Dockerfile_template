@@ -1,0 +1,94 @@
+###############################################################################
+# {{PLATFORM_NAME}} — Dockerfile Template
+#
+# TEMPLATE — Copy and customise. Search-replace all {{...}} placeholders.
+#
+# Multi-stage build:
+#   Stage 1 (builder): Compile Rust binary + optional WASM frontend
+#   Stage 2 (runtime): Minimal Debian runtime image
+#
+# Optimised for Docker layer caching:
+#   - Cargo.toml/Cargo.lock copied first → deps pre-built as cached layer
+#   - Source code copied second → only code changes trigger recompile
+###############################################################################
+
+# ── Stage 1: Build ───────────────────────────────────────────────────────────
+FROM rust:1.93-bookworm AS builder
+
+WORKDIR /build
+
+# CUSTOMISE: Install build-time system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Layer-cache trick: copy manifests and pre-build deps ─────────────────────
+COPY Cargo.toml Cargo.lock ./
+
+# CUSTOMISE: Copy all crate manifests (adjust paths for your workspace layout)
+# Each crate needs a Cargo.toml and a stub lib.rs so `cargo build` resolves deps.
+# Example for a multi-crate workspace:
+# COPY crates/my-core/Cargo.toml     crates/my-core/Cargo.toml
+# COPY crates/my-storage/Cargo.toml  crates/my-storage/Cargo.toml
+# COPY services/api-server/Cargo.toml services/api-server/Cargo.toml
+
+# Create stub source files so cargo can resolve the workspace
+# CUSTOMISE: One stub per crate in your workspace
+# RUN mkdir -p crates/my-core/src     && echo "" > crates/my-core/src/lib.rs
+# RUN mkdir -p crates/my-storage/src  && echo "" > crates/my-storage/src/lib.rs
+# RUN mkdir -p services/api-server/src && echo "fn main(){}" > services/api-server/src/main.rs
+
+# Pre-build dependencies (cached unless Cargo.toml changes)
+# CUSTOMISE: Replace -p with your API server crate name
+# RUN cargo build -p {{API_BINARY}} --release 2>/dev/null || true
+
+# ── Copy real source and build ───────────────────────────────────────────────
+COPY . .
+
+# Touch source files to invalidate stubs (force rebuild of actual code)
+# CUSTOMISE: Touch all real source files
+# RUN find crates/ services/ -name "*.rs" -exec touch {} +
+
+# CUSTOMISE: Replace with your binary crate
+# RUN cargo build -p {{API_BINARY}} --release
+
+# ── Optional: Build WASM frontend ────────────────────────────────────────────
+# Uncomment if your platform has a WASM UI
+# RUN rustup target add wasm32-unknown-unknown \
+#     && cargo install wasm-pack \
+#     && wasm-pack build ui/my-wasm-crate --target web --release \
+#        --out-dir /build/ui/my-wasm-crate/pkg --no-typescript
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -m appuser
+
+WORKDIR /app
+
+# CUSTOMISE: Copy built binary
+# COPY --from=builder /build/target/release/{{API_BINARY}} /app/bin/{{API_BINARY}}
+
+# CUSTOMISE: Copy migrations, config, UI assets
+# COPY --from=builder /build/migrations/     /app/migrations/
+# COPY --from=builder /build/ui/             /app/ui/
+# COPY --from=builder /build/scripts/        /app/scripts/
+
+RUN mkdir -p /app/data && chown -R appuser:appuser /app
+
+USER appuser
+
+# CUSTOMISE: Set your API port
+# EXPOSE {{PORT_API}}
+
+# CUSTOMISE: Health check endpoint
+# HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+#   CMD curl -sf http://localhost:{{PORT_API}}/readyz || exit 1
+
+# CUSTOMISE: Entry point
+# CMD ["/app/bin/{{API_BINARY}}"]

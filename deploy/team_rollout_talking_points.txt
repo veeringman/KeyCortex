@@ -1,6 +1,30 @@
 DEPLOYMENT TEMPLATE ROLLOUT — TALKING POINTS PER TEAM
 =====================================================
 
+HOW TO GET THE TEMPLATES
+========================
+
+All repos are owned by veeringman — every team already has access.
+
+Option A — curl from any platform repo:
+
+  curl -sL https://raw.githubusercontent.com/veeringman/KeyCortex/main/deploy/setup_docker_template.sh -o scripts/setup_docker.sh
+  curl -sL https://raw.githubusercontent.com/veeringman/KeyCortex/main/deploy/docker-compose_template.yml -o docker-compose.yml
+  curl -sL https://raw.githubusercontent.com/veeringman/KeyCortex/main/deploy/Dockerfile_template -o Dockerfile
+  curl -sL https://raw.githubusercontent.com/veeringman/KeyCortex/main/deploy/platform_port_allocation.md -o deploy/port_allocation.md
+
+Option B — gh CLI (if repos are private):
+
+  gh api repos/veeringman/KeyCortex/contents/deploy/setup_docker_template.sh --jq '.content' | base64 -d > scripts/setup_docker.sh
+
+Option C — just clone KeyCortex and copy deploy/:
+
+  git clone git@github.com:veeringman/KeyCortex.git /tmp/kc
+  cp /tmp/kc/deploy/setup_docker_template.sh   scripts/setup_docker.sh
+  cp /tmp/kc/deploy/docker-compose_template.yml docker-compose.yml
+  cp /tmp/kc/deploy/Dockerfile_template         Dockerfile
+  rm -rf /tmp/kc
+
 What to share (same link for all teams):
   https://github.com/veeringman/KeyCortex/tree/main/deploy
 

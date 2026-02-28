@@ -28,5 +28,6 @@ kc-crypto = { path = "../../crates/kc-crypto" }
 kc-storage = { path = "../../crates/kc-storage" }
 
 [dev-dependencies]
+async-trait.workspace = true
 tempfile = "3"
 tower = "0.5"

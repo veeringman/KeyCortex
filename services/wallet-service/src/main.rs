@@ -224,6 +224,7 @@ pub(crate) struct AppState {
     pub(crate) submit_idempotency_cache: Arc<TokioRwLock<HashMap<String, WalletSubmitResponse>>>,
     pub(crate) submit_nonce_state: Arc<TokioRwLock<HashMap<String, u64>>>,
     pub(crate) authbuddy_callback: Option<Box<dyn crate::auth::AuthBuddyCallback + Send + Sync>>,
+    pub(crate) chain_adapter: Arc<dyn ChainAdapter>,
 }
 
 #[tokio::main]
@@ -356,6 +357,7 @@ async fn main() -> anyhow::Result<()> {
         submit_idempotency_cache: Arc::new(TokioRwLock::new(HashMap::new())),
         submit_nonce_state: Arc::new(TokioRwLock::new(HashMap::new())),
         authbuddy_callback,
+        chain_adapter: Arc::new(FlowCortexAdapter::default()),
     };
 
     if authbuddy_jwks_url.is_some() || authbuddy_jwks_path.is_some() {
@@ -859,7 +861,10 @@ async fn wallet_sign(
     }))
 }
 
-async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<WalletBalanceResponse> {
+async fn wallet_balance(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<WalletBalanceQuery>,
+) -> ApiResult<WalletBalanceResponse> {
     if query.wallet_address.trim().is_empty() {
         return Err(bad_request("wallet_address is required"));
     }
@@ -874,8 +879,7 @@ async fn wallet_balance(Query(query): Query<WalletBalanceQuery>) -> ApiResult<Wa
         return Err(bad_request("unsupported asset for MVP; only PROOF and FloweR are enabled"));
     }
 
-    let adapter = FlowCortexAdapter;
-    let result = adapter
+    let result = state.chain_adapter
         .get_balance(&WalletAddress(query.wallet_address.clone()), &AssetSymbol(asset.clone()))
         .await
         .map_err(internal_error)?;
@@ -1121,9 +1125,61 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{HeaderValue, Method, Request};
     use jsonwebtoken::{EncodingKey, Header, encode};
+    use kc_api_types::ChainId;
+    use kc_chain_client::{BalanceResult, SubmitTxRequest, SubmitTxResult, TxStatusRequest, TxStatusResult};
     use serde_json::{Value, json};
     use tempfile::TempDir;
     use tower::util::ServiceExt;
+
+    /// In-memory mock adapter that returns success without network calls.
+    struct MockChainAdapter;
+
+    #[async_trait::async_trait]
+    impl ChainAdapter for MockChainAdapter {
+        fn chain_id(&self) -> &str {
+            FLOWCORTEX_L1
+        }
+
+        async fn get_balance(
+            &self,
+            wallet_address: &WalletAddress,
+            asset: &AssetSymbol,
+        ) -> anyhow::Result<BalanceResult> {
+            Ok(BalanceResult {
+                wallet_address: wallet_address.clone(),
+                chain: ChainId(FLOWCORTEX_L1.to_owned()),
+                asset: asset.clone(),
+                amount: "0".to_owned(),
+            })
+        }
+
+        async fn submit_transaction(
+            &self,
+            req: SubmitTxRequest,
+        ) -> anyhow::Result<SubmitTxResult> {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            req.from.0.hash(&mut hasher);
+            req.signed_payload.hash(&mut hasher);
+            let hash = format!("mock-tx-{:016x}", hasher.finish());
+            Ok(SubmitTxResult {
+                tx_hash: hash,
+                accepted: true,
+            })
+        }
+
+        async fn get_transaction_status(
+            &self,
+            req: TxStatusRequest,
+        ) -> anyhow::Result<TxStatusResult> {
+            Ok(TxStatusResult {
+                tx_hash: req.tx_hash,
+                status: "confirmed".to_owned(),
+                accepted: true,
+            })
+        }
+    }
 
     fn test_state(temp_dir: &TempDir) -> AppState {
         let keystore = RocksDbKeystore::open_default(
@@ -1161,6 +1217,7 @@ mod tests {
             submit_idempotency_cache: Arc::new(TokioRwLock::new(HashMap::new())),
             submit_nonce_state: Arc::new(TokioRwLock::new(HashMap::new())),
             authbuddy_callback: None,
+            chain_adapter: Arc::new(MockChainAdapter),
         }
     }
 
@@ -1245,7 +1302,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir should create");
         let app = build_app(test_state(&temp_dir));
 
-        let (create_status, create_body) = send_empty(&app, Method::POST, "/wallet/create").await;
+        let (create_status, create_body) = send_json(&app, Method::POST, "/wallet/create", json!({}), vec![]).await;
         assert_eq!(create_status, StatusCode::OK);
         assert_eq!(create_body["chain"], "flowcortex-l1");
         let wallet_address = create_body["wallet_address"]
@@ -1278,7 +1335,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir should create");
         let app = build_app(test_state(&temp_dir));
 
-        let (create_status, create_body) = send_empty(&app, Method::POST, "/wallet/create").await;
+        let (create_status, create_body) = send_json(&app, Method::POST, "/wallet/create", json!({}), vec![]).await;
         assert_eq!(create_status, StatusCode::OK);
         let wallet_address = create_body["wallet_address"]
             .as_str()
@@ -1349,7 +1406,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir should create");
         let app = build_app(test_state(&temp_dir));
 
-        let (create_status, create_body) = send_empty(&app, Method::POST, "/wallet/create").await;
+        let (create_status, create_body) = send_json(&app, Method::POST, "/wallet/create", json!({}), vec![]).await;
         assert_eq!(create_status, StatusCode::OK);
         let wallet_address = create_body["wallet_address"]
             .as_str()
@@ -1412,7 +1469,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir should create");
         let app = build_app(test_state(&temp_dir));
 
-        let (create_status, create_body) = send_empty(&app, Method::POST, "/wallet/create").await;
+        let (create_status, create_body) = send_json(&app, Method::POST, "/wallet/create", json!({}), vec![]).await;
         assert_eq!(create_status, StatusCode::OK);
         let wallet_address = create_body["wallet_address"]
             .as_str()

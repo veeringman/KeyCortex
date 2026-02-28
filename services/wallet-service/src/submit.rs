@@ -7,8 +7,8 @@ use kc_api_types::{
     AssetSymbol, ChainId, SignPurpose, WalletAddress, WalletNonceResponse, WalletSubmitRequest,
     WalletSubmitResponse, WalletTxStatusResponse,
 };
-use kc_chain_client::{ChainAdapter, SubmitTxRequest, TxStatusRequest};
-use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
+use kc_chain_client::{SubmitTxRequest, TxStatusRequest};
+use kc_chain_flowcortex::FLOWCORTEX_L1;
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material};
 use kc_storage::{Keystore, SubmitIdempotencyRecord, SubmittedTxRecord, WalletNonceRecord};
 use serde::Deserialize;
@@ -158,8 +158,7 @@ pub(crate) async fn wallet_submit(
         .map_err(internal_error)?;
     let signature_hex = to_hex(&signature);
 
-    let adapter = FlowCortexAdapter;
-    let result = adapter
+    let result = state.chain_adapter
         .submit_transaction(SubmitTxRequest {
             from: WalletAddress(request.from.clone()),
             to: WalletAddress(request.to.clone()),
@@ -241,8 +240,7 @@ pub(crate) async fn wallet_tx_status(
         .ok_or_else(|| bad_request("transaction not found"))?;
 
     if record.chain == FLOWCORTEX_L1 {
-        let adapter = FlowCortexAdapter;
-        match adapter
+        match state.chain_adapter
             .get_transaction_status(TxStatusRequest {
                 tx_hash: record.tx_hash.clone(),
                 chain: ChainId(record.chain.clone()),

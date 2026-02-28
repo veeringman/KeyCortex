@@ -8,5 +8,10 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
 kc-api-types = { path = "../kc-api-types" }
 kc-chain-client = { path = "../kc-chain-client" }

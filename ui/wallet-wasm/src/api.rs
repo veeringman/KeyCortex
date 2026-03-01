@@ -12,7 +12,7 @@ use web_sys::{Headers, Request, RequestInit, RequestMode, Response};
 
 /// Determine the API base URL.
 ///
-/// Priority: user-supplied `#baseUrl` input → Codespace auto-detect → same-origin `:8080`.
+/// Priority: user-supplied `#baseUrl` input → Codespace auto-detect → same-origin `:8811`.
 pub fn base_url() -> String {
     if let Some(input) = dom::by_id_typed::<web_sys::HtmlInputElement>("baseUrl") {
         let v = input.value().trim().to_string();
@@ -34,7 +34,7 @@ pub fn base_url() -> String {
         return format!("https://{}-8080.app.github.dev", prefix);
     }
 
-    format!("{}//{}:8080", protocol, host)
+    format!("{}//{}:8811", protocol, host)
 }
 
 /// Perform a fetch request, returning the parsed JSON as `serde_json::Value`.

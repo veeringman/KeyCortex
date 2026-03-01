@@ -99,52 +99,57 @@ FlowCortex should confirm or provide the following so ProofCortex circuits and w
 ## 7) Recommended Canonical Parameter Template (to be filled by FlowCortex)
 
 ```yaml
+# ── Filled in from flow-cortex/flowcortex-l1/src/chain_params.rs ──────────────
 flowcortex_l1:
   chain_slug: flowcortex-l1
-  chain_id_numeric: <TBD>
-  network_id: <TBD>
-  genesis_hash: <TBD>
-  protocol_version: <TBD>
-  address_scheme: <TBD>
+  chain_id_numeric: 1337
+  network_id: 1337
+  genesis_hash: a6e2b404caa93426a8f608aa8e633d63f6a5b1d44772d59fc230bb505bdbb4ff
+  protocol_version: v1
+  address_scheme: fc-string-v1          # human-readable UTF-8 string addresses
   signature_scheme: ed25519
 
   domains:
-    tx_domain_tag: <TBD>
-    auth_domain_tag: <TBD>
-    proof_domain_tag: <TBD>
+    tx_domain_tag: "flowcortex:tx:v1"
+    auth_domain_tag: "flowcortex:auth:v1"
+    proof_domain_tag: "flowcortex:proof:v1"
 
   tx:
-    hash_algorithm: <TBD>
-    canonical_serialization: <TBD>
-    nonce_model: <TBD>
-    fee_model: <TBD>
-    finality_rule: <TBD>
+    hash_algorithm: sha256
+    canonical_serialization: json-canonical-rfc8785
+    nonce_model: commitment-hash-idempotent   # nonce = sha256(canonical(fields))
+    fee_model: none-mvp                       # no fees in MVP
+    finality_rule: single-node-immediate-1-block
 
   assets:
     - symbol: PROOF
       type: native
-      decimals: <TBD>
-      min_transfer_unit: <TBD>
-      fee_payment_support: <TBD>
+      decimals: 6
+      min_transfer_unit: 1                    # 1 micro-PROOF
+      fee_payment_support: false
     - symbol: FloweR
-      type: <native|token>
-      contract_or_module_id: <TBD>
-      decimals: <TBD>
-      mint_burn_authority_model: <TBD>
-      pause_or_freeze_flags: <TBD>
+      type: native-stablecoin
+      contract_or_module_id: built-in         # no separate contract; part of ledger
+      decimals: 6
+      mint_burn_authority_model: settlement-banks-only
+      pause_or_freeze_flags: true
 
   endpoints:
-    rpc_read_url: <TBD>
-    rpc_write_url: <TBD>
-    event_or_indexer_url: <TBD>
+    rpc_read_url: http://localhost:8082
+    rpc_write_url: http://localhost:8082
+    event_or_indexer_url: none-mvp            # no indexer in MVP
 
   proofcortex:
-    proof_input_schema_version: <TBD>
-    wallet_verification_fact_format: <TBD>
-    commitment_hash_rule: <TBD>
+    proof_input_schema_version: proofcortex-mvp-v1
+    wallet_verification_fact_format: "{wallet_address: <string>, chain_slug: \"flowcortex-l1\"}"
+    commitment_hash_rule: "sha256(json_canonical(witness_fields))"
     domain_separator_alignment: required
-    attestation_timestamp_tolerance_ms: <TBD>
-    proof_failure_codes: <TBD>
+    attestation_timestamp_tolerance_ms: 10000
+    proof_failure_codes:
+      INVALID_COMMITMENT: 4001
+      ANCHOR_MISMATCH: 4002
+      TIMESTAMP_EXPIRED: 4003
+      SCHEMA_VIOLATION: 4004
 ```
 
 ---

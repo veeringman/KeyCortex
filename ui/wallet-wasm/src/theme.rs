@@ -14,7 +14,7 @@ use wasm_bindgen::JsCast;
 
 /// Fetch and cache `themes.json`.
 pub async fn load_themes() -> Option<HashMap<String, state::ThemeTokens>> {
-    let url = "../wallet-baseline/themes.json";
+    let url = "wallet-baseline/themes.json";
     let resp = api::fetch_text(url).await.ok()?;
     let map: HashMap<String, state::ThemeTokens> = serde_json::from_str(&resp).ok()?;
     state::set_themes(map.clone());

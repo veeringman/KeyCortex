@@ -3,10 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KeyCortex Wallet UI (WASM)</title>
-    
-    <link rel="stylesheet" href="wallet-baseline/styles.css?v=9" />
-  <link rel="modulepreload" href="/wallet-wasm-279d58a80931118e.js" crossorigin="anonymous" integrity="sha384-ghrDy+hUuk400yoFl2Y1eQ1pURMUhI7pLsPfsaG6+NcdAQp7YaB9WRe1xB2MiKRA"><link rel="preload" href="/wallet-wasm-279d58a80931118e_bg.wasm" crossorigin="anonymous" integrity="sha384-HAgrLlsoI2jtYTDiyjiB5p68W+g6k5GYTiTNE2puwgLzng4E6p4xRerLj0SL90lL" as="fetch" type="application/wasm"></head>
+    <title>KeyCortex Wallet UI Baseline</title>
+    <link rel="stylesheet" href="./styles.css?v=9" />
+  </head>
   <body>
     <div class="wallet-centerer">
       <main class="wallet-window" role="application" aria-label="KeyCortex wallet window">
@@ -17,7 +16,7 @@
       <div class="wallet-clip-right" aria-hidden="true"></div>
       <div class="wallet-folded" id="walletFolded">
         <button id="walletFoldToggle" class="wallet-fold-toggle" aria-label="Open wallet">
-          <img src="wallet-baseline/keycortex_logo.png" alt="Open Wallet" class="fold-logo" />
+          <img src="./keycortex_logo.png" alt="Open Wallet" class="fold-logo" />
         </button>
         <div class="wallet-engrave" aria-hidden="true">Secure Digital Wallet</div>
         <div class="half-fold-info" id="halfFoldInfo">
@@ -42,7 +41,7 @@
       <header class="header">
         <img
           class="brand-logo"
-          src="wallet-baseline/keycortex_logo.png"
+          src="./keycortex_logo.png"
           alt="KeyCortex logo"
         />
         <div class="header-text">
@@ -120,6 +119,7 @@
           </div>
           <p class="form-hint" id="restoreHint" style="display:none"></p>
         </div>
+
         <pre id="createResult" class="result"></pre>
       </section>
 
@@ -290,20 +290,6 @@
       </main>
     </div>
 
-    <script type="module">
-      import init from './pkg/wallet_wasm.js';
-      init();
-    </script>
-  
-<script type="module">
-import init, * as bindings from '/wallet-wasm-279d58a80931118e.js';
-const wasm = await init({ module_or_path: '/wallet-wasm-279d58a80931118e_bg.wasm' });
-
-
-window.wasmBindings = bindings;
-
-
-dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
-
-</script></body>
+    <script src="./app.js?v=9" defer></script>
+  </body>
 </html>

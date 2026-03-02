@@ -293,7 +293,7 @@ echo -e "${CYAN}║  API Server:      http://127.0.0.1:8080                     
 echo -e "${CYAN}║  JS  Frontend:    http://127.0.0.1:8090                          ║${NC}"
 echo -e "${CYAN}║  WASM Frontend:   http://127.0.0.1:8091                          ║${NC}"
 if [[ "$WITH_POSTGRES" == true ]]; then
-echo -e "${CYAN}║  PostgreSQL:      localhost:5432 (keycortex/keycortex)           ║${NC}"
+echo -e "${CYAN}║  PostgreSQL:      192.168.29.78:5432 (keycortex/keycortex)           ║${NC}"
 fi
 echo -e "${CYAN}║                                                                  ║${NC}"
 echo -e "${CYAN}║  Containers:                                                     ║${NC}"

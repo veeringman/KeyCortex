@@ -350,7 +350,7 @@ chmod +x scripts/cross_build_windows.sh
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | No | — | Postgres connection string (e.g., `postgres://user:pass@localhost/keycortex`) |
+| `DATABASE_URL` | No | — | Postgres connection string (e.g., `postgres://user:pass@192.168.29.78/keycortex`) |
 | `KEYCORTEX_POSTGRES_MIGRATIONS_DIR` | No | `./migrations/postgres` | Path to SQL migration files |
 
 ### 7.3 AuthBuddy IdP
@@ -382,7 +382,7 @@ export KEYCORTEX_KEYSTORE_PATH="./data/keystore/rocksdb"
 export RUST_LOG="info"
 
 # Postgres (optional — comment out to use RocksDB only)
-# export DATABASE_URL="postgres://keycortex:keycortex@localhost:5432/keycortex"
+# export DATABASE_URL="postgres://keycortex:keycortex@192.168.29.78:5432/keycortex"
 # export KEYCORTEX_POSTGRES_MIGRATIONS_DIR="./migrations/postgres"
 
 # AuthBuddy
@@ -511,7 +511,7 @@ SQL
 ### 10.3 Verify Connection
 
 ```bash
-psql "postgres://keycortex:keycortex@localhost/keycortex" -c "SELECT 1;"
+psql "postgres://keycortex:keycortex@192.168.29.78/keycortex" -c "SELECT 1;"
 ```
 
 ### 10.4 Apply Migrations
@@ -521,7 +521,7 @@ Migrations are applied **automatically** at startup when `DATABASE_URL` is set. 
 Manual apply:
 
 ```bash
-psql "postgres://keycortex:keycortex@localhost/keycortex" \
+psql "postgres://keycortex:keycortex@192.168.29.78/keycortex" \
   -f migrations/postgres/0001_init.sql
 ```
 
@@ -554,9 +554,9 @@ cd ui/wallet-baseline
 python3 -m http.server 8090
 ```
 
-Open: `http://localhost:8090`
+Open: `http://192.168.29.78:8090`
 
-The UI auto-detects the API base URL from the browser location. For local dev, it talks to `http://localhost:8080`.
+The UI auto-detects the API base URL from the browser location. For local dev, it talks to `http://192.168.29.78:8080`.
 
 ### Production: serve with nginx
 
@@ -644,7 +644,7 @@ cd /path/to/KeyCortex
 python3 -m http.server 8091 --directory ui/wallet-wasm
 ```
 
-Open: `http://localhost:8091`
+Open: `http://192.168.29.78:8091`
 
 ### 12.4 Source Structure
 
@@ -813,7 +813,7 @@ KeyCortex Wallet Service v${VERSION}
 2. source .env
 3. ./wallet-service
 4. UI: serve ui/ with any static HTTP server
-5. API: http://localhost:8080
+5. API: http://192.168.29.78:8080
 EOF
 
 cd dist
@@ -872,7 +872,7 @@ KEYCORTEX_KEYSTORE_PATH=/opt/keycortex/data/keystore/rocksdb
 KEYCORTEX_POSTGRES_MIGRATIONS_DIR=/opt/keycortex/migrations/postgres
 
 # Uncomment for Postgres dual-write
-# DATABASE_URL=postgres://keycortex:SECURE_PASSWORD@localhost:5432/keycortex
+# DATABASE_URL=postgres://keycortex:SECURE_PASSWORD@192.168.29.78:5432/keycortex
 
 # AuthBuddy
 AUTHBUDDY_JWT_SECRET=CHANGE_THIS_TO_A_REAL_SECRET
@@ -1017,9 +1017,9 @@ docker compose logs -f watchdog
 ### 17.6 Health Checks
 
 All services have Docker health checks:
-- **wallet-service**: `curl -sf http://localhost:8080/readyz` (10s interval, 15s start period)
+- **wallet-service**: `curl -sf http://192.168.29.78:8080/readyz` (10s interval, 15s start period)
 - **postgres**: `pg_isready -U keycortex` (5s interval)
-- **ui-js / ui-wasm**: `wget -qO- http://localhost/index.html` (15s interval)
+- **ui-js / ui-wasm**: `wget -qO- http://192.168.29.78/index.html` (15s interval)
 
 ### 17.7 Production Notes
 
@@ -1228,13 +1228,13 @@ sudo systemctl start keycortex-wallet
 ### Postgres Backup (if used)
 
 ```bash
-pg_dump -U keycortex -h localhost keycortex > keycortex-pg-backup.sql
+pg_dump -U keycortex -h 192.168.29.78 keycortex > keycortex-pg-backup.sql
 ```
 
 ### Postgres Restore
 
 ```bash
-psql -U keycortex -h localhost keycortex < keycortex-pg-backup.sql
+psql -U keycortex -h 192.168.29.78 keycortex < keycortex-pg-backup.sql
 ```
 
 ⚠️ **Critical:** Back up the RocksDB directory regularly — it contains encrypted wallet keys. Loss = loss of all wallets that weren't created with a passphrase.
@@ -1326,12 +1326,12 @@ RUST_LOG=wallet_service=debug,tower_http=info
 ║    ./scripts/watchdog.sh --once               (single pass)      ║
 ║                                                                  ║
 ║  HEALTH CHECK                                                    ║
-║    curl http://localhost:8080/health | jq .                      ║
-║    curl http://localhost:8080/readyz | jq .ready                 ║
+║    curl http://192.168.29.78:8080/health | jq .                      ║
+║    curl http://192.168.29.78:8080/readyz | jq .ready                 ║
 ║                                                                  ║
 ║  UI                                                              ║
-║    JS:   http://localhost:8090  (wallet-baseline)                ║
-║    WASM: http://localhost:8091  (wallet-wasm)                    ║
+║    JS:   http://192.168.29.78:8090  (wallet-baseline)                ║
+║    WASM: http://192.168.29.78:8091  (wallet-wasm)                    ║
 ║                                                                  ║
 ║  DEPLOY                                                          ║
 ║    sudo systemctl start keycortex-wallet                         ║

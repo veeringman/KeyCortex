@@ -39,7 +39,7 @@
 #       - KEYCORTEX_API_URL=http://keycortex-api:8080
 #       - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-dev-key}
 #     healthcheck:
-#       test: ["CMD", "curl", "-sf", "http://localhost:8100/health"]
+#       test: ["CMD", "curl", "-sf", "http://192.168.29.78:8100/health"]
 #
 #   postgres:
 #     container_name: authbuddy-db
@@ -58,9 +58,9 @@
 
 # ─── Smoke tests to add ──────────────────────────────────────────────────────
 #
-# smoke_check "JWKS endpoint"   "http://localhost:8100/.well-known/jwks.json"
-# smoke_check "Token endpoint"  "http://localhost:8100/auth/token" "405"  # POST only
-# smoke_check "Health"          "http://localhost:8100/health"
+# smoke_check "JWKS endpoint"   "http://192.168.29.78:8100/.well-known/jwks.json"
+# smoke_check "Token endpoint"  "http://192.168.29.78:8100/auth/token" "405"  # POST only
+# smoke_check "Health"          "http://192.168.29.78:8100/health"
 
 # ─── Quick-start steps for AuthBuddy team ────────────────────────────────────
 #

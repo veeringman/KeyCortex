@@ -12,7 +12,7 @@ pub const FLOWCORTEX_L1: &str = "flowcortex-l1";
 /// Real HTTP adapter for FlowCortex L1 node.
 ///
 /// Reads `FLOWCORTEX_L1_URL` from environment at construction time
-/// (default: `http://localhost:8082`).
+/// (default: `http://192.168.29.78:8082`).
 pub struct FlowCortexAdapter {
     endpoint: String,
     http: reqwest::Client,
@@ -28,7 +28,7 @@ impl FlowCortexAdapter {
     pub fn new(endpoint: Option<String>) -> Self {
         let endpoint = endpoint
             .or_else(|| std::env::var("FLOWCORTEX_L1_URL").ok())
-            .unwrap_or_else(|| "http://localhost:8082".to_string());
+            .unwrap_or_else(|| "http://192.168.29.78:8082".to_string());
         Self {
             endpoint: endpoint.trim_end_matches('/').to_string(),
             http: reqwest::Client::new(),

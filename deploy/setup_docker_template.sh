@@ -251,7 +251,7 @@ step "Waiting for $PLATFORM_NAME API health"
 MAX_WAIT=60
 WAITED=0
 while [[ $WAITED -lt $MAX_WAIT ]]; do
-  if curl -sf "http://localhost:${PORT_API}${HEALTH_ENDPOINT}" >/dev/null 2>&1; then
+  if curl -sf "http://192.168.29.78:${PORT_API}${HEALTH_ENDPOINT}" >/dev/null 2>&1; then
     ok "$PLATFORM_NAME API healthy (port $PORT_API) after ${WAITED}s"
     break
   fi
@@ -280,28 +280,28 @@ smoke_check() {
 }
 
 # CUSTOMISE: Add your platform's smoke test endpoints
-smoke_check "API health"     "http://localhost:${PORT_API}${HEALTH_ENDPOINT}"
-smoke_check "API readyz"     "http://localhost:${PORT_API}/readyz"
+smoke_check "API health"     "http://192.168.29.78:${PORT_API}${HEALTH_ENDPOINT}"
+smoke_check "API readyz"     "http://192.168.29.78:${PORT_API}/readyz"
 
 if [[ $PORT_UI_JS -gt 0 ]]; then
-  smoke_check "UI-JS index"  "http://localhost:${PORT_UI_JS}/"
+  smoke_check "UI-JS index"  "http://192.168.29.78:${PORT_UI_JS}/"
 fi
 if [[ $PORT_UI_WASM -gt 0 ]] && [[ "$HAS_WASM_UI" == true ]]; then
-  smoke_check "UI-WASM index" "http://localhost:${PORT_UI_WASM}/"
+  smoke_check "UI-WASM index" "http://192.168.29.78:${PORT_UI_WASM}/"
 fi
 
 # CUSTOMISE: Platform-specific smoke tests
-# smoke_check "Create resource" "http://localhost:${PORT_API}/some/endpoint" "200"
+# smoke_check "Create resource" "http://192.168.29.78:${PORT_API}/some/endpoint" "200"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 step "$PLATFORM_NAME — Running"
 
 echo ""
 echo "  Services:"
-echo "    API:        http://localhost:${PORT_API}"
-[[ $PORT_UI_JS -gt 0 ]]   && echo "    UI (JS):    http://localhost:${PORT_UI_JS}"
-[[ $PORT_UI_WASM -gt 0 ]] && echo "    UI (WASM):  http://localhost:${PORT_UI_WASM}"
-[[ "$WITH_POSTGRES" == true ]] && echo "    Postgres:   localhost:${PORT_DB}"
+echo "    API:        http://192.168.29.78:${PORT_API}"
+[[ $PORT_UI_JS -gt 0 ]]   && echo "    UI (JS):    http://192.168.29.78:${PORT_UI_JS}"
+[[ $PORT_UI_WASM -gt 0 ]] && echo "    UI (WASM):  http://192.168.29.78:${PORT_UI_WASM}"
+[[ "$WITH_POSTGRES" == true ]] && echo "    Postgres:   192.168.29.78:${PORT_DB}"
 echo ""
 echo "  Commands:"
 echo "    docker compose ps                    # Status"

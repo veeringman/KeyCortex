@@ -311,7 +311,7 @@ node -e "
 "
 
 # Bind a wallet
-curl -X POST http://localhost:8080/auth/bind \
+curl -X POST http://192.168.29.78:8080/auth/bind \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"wallet_address": "0x...", "chain": "flowcortex-l1"}'

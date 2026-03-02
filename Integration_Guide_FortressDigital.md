@@ -319,12 +319,12 @@ Both require `Authorization: Bearer <authbuddy-jwt>` with `ops-admin` role.
 
 ```bash
 # Create and check a wallet
-WALLET=$(curl -s -X POST http://localhost:8080/wallet/create \
+WALLET=$(curl -s -X POST http://192.168.29.78:8080/wallet/create \
   -H "Content-Type: application/json" \
   -d '{"label": "fd-test"}' | jq -r '.wallet_address')
 
 # Query wallet status (no binding yet)
-curl -s -X POST http://localhost:8080/fortressdigital/wallet-status \
+curl -s -X POST http://192.168.29.78:8080/fortressdigital/wallet-status \
   -H "Content-Type: application/json" \
   -d "{
     \"wallet_address\": \"$WALLET\",
@@ -336,7 +336,7 @@ curl -s -X POST http://localhost:8080/fortressdigital/wallet-status \
 
 ```bash
 # Generate a signed context payload
-curl -s -X POST http://localhost:8080/fortressdigital/context \
+curl -s -X POST http://192.168.29.78:8080/fortressdigital/context \
   -H "Content-Type: application/json" \
   -d "{
     \"wallet_address\": \"$WALLET\",

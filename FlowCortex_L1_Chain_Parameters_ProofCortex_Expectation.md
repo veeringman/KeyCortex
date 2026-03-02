@@ -135,8 +135,8 @@ flowcortex_l1:
       pause_or_freeze_flags: true
 
   endpoints:
-    rpc_read_url: http://localhost:8082
-    rpc_write_url: http://localhost:8082
+    rpc_read_url: http://192.168.29.78:8082
+    rpc_write_url: http://192.168.29.78:8082
     event_or_indexer_url: none-mvp            # no indexer in MVP
 
   proofcortex:

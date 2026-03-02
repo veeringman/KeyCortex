@@ -274,7 +274,7 @@ export KEYCORTEX_KEYSTORE_PATH="./data/keystore/rocksdb"
 export RUST_LOG="info"
 
 # ─── PostgreSQL (optional — uncomment to enable dual-write) ─────────────────
-# export DATABASE_URL="postgres://keycortex:keycortex@localhost:5432/keycortex"
+# export DATABASE_URL="postgres://keycortex:keycortex@192.168.29.78:5432/keycortex"
 # export KEYCORTEX_POSTGRES_MIGRATIONS_DIR="./migrations/postgres"
 
 # ─── AuthBuddy IdP ──────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ SQL
   sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE keycortex TO keycortex;" 2>/dev/null || true
 
   # Test connection
-  if psql "postgres://keycortex:keycortex@localhost/keycortex" -c "SELECT 1;" >/dev/null 2>&1; then
+  if psql "postgres://keycortex:keycortex@192.168.29.78/keycortex" -c "SELECT 1;" >/dev/null 2>&1; then
     ok "PostgreSQL connection verified"
   else
     warn "PostgreSQL connection failed — check pg_hba.conf for local password auth"
@@ -347,7 +347,7 @@ RUST_LOG=info
 KEYCORTEX_KEYSTORE_PATH=/opt/keycortex/data/keystore/rocksdb
 KEYCORTEX_POSTGRES_MIGRATIONS_DIR=/opt/keycortex/migrations/postgres
 AUTHBUDDY_JWT_SECRET=CHANGE_THIS_TO_A_REAL_SECRET
-# DATABASE_URL=postgres://keycortex:SECURE_PASSWORD@localhost:5432/keycortex
+# DATABASE_URL=postgres://keycortex:SECURE_PASSWORD@192.168.29.78:5432/keycortex
 # AUTHBUDDY_JWKS_URL=https://authbuddy.example.com/.well-known/jwks.json
 SYSENV
 
@@ -406,7 +406,7 @@ cat > "$NGINX_CONF" <<'NGINX'
 
 server {
     listen 80;
-    server_name localhost;
+    server_name 192.168.29.78;
     # server_name wallet.yourdomain.com;  # ← change for production
 
     # ─── JS baseline frontend ────────────────────────────────────────────

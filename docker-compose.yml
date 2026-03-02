@@ -39,7 +39,7 @@ services:
         required: false
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/readyz"]
+      test: ["CMD", "curl", "-sf", "http://192.168.29.78:8080/readyz"]
       interval: 10s
       timeout: 5s
       start_period: 15s
@@ -77,7 +77,7 @@ services:
       - ./ui/wallet-baseline:/usr/share/nginx/html:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/index.html"]
+      test: ["CMD", "wget", "-qO-", "http://192.168.29.78/index.html"]
       interval: 15s
       timeout: 3s
       retries: 2

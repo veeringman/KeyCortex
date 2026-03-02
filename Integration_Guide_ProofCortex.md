@@ -289,12 +289,12 @@ The `message` field contains the first 16 characters of the commitment hash for 
 
 ```bash
 # Create a wallet first
-WALLET=$(curl -s -X POST http://localhost:8080/wallet/create \
+WALLET=$(curl -s -X POST http://192.168.29.78:8080/wallet/create \
   -H "Content-Type: application/json" \
   -d '{"label": "proof-test"}' | jq -r '.wallet_address')
 
 # Generate a commitment
-curl -s -X POST http://localhost:8080/proofcortex/commitment \
+curl -s -X POST http://192.168.29.78:8080/proofcortex/commitment \
   -H "Content-Type: application/json" \
   -d "{
     \"wallet_address\": \"$WALLET\",

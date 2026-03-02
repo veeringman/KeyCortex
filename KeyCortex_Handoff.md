@@ -211,10 +211,10 @@ docker compose --profile full up -d           # Everything + watchdog
 ### After Setup: Verify
 
 ```bash
-curl -s http://localhost:8080/health | jq .       # API health
-curl -s http://localhost:8080/version | jq .      # Version
-open http://localhost:8090                         # JS frontend
-open http://localhost:8091                         # WASM frontend
+curl -s http://192.168.29.78:8080/health | jq .       # API health
+curl -s http://192.168.29.78:8080/version | jq .      # Version
+open http://192.168.29.78:8090                         # JS frontend
+open http://192.168.29.78:8091                         # WASM frontend
 ```
 
 ---
@@ -707,7 +707,7 @@ Hard-won lessons from building, deploying, and operating KeyCortex. Share these 
 |--------|--------|
 | **Relative paths need parent directory** | WASM `index.html` uses `../wallet-baseline/styles.css`, `../../config/icon-manifest.json`, etc. The serving root must include the parent `ui/` directory, not just `ui/wallet-wasm/`. |
 | **Docker: use nginx alias directives** | `nginx-wasm.conf` sets `root` to `wallet-wasm/` and uses `alias` for `/wallet-baseline/`, `/config/`, `/assets/` to resolve cross-directory references. |
-| **Bare-metal: serve from `ui/`** | `python3 -m http.server 8091 --directory ui/` — the WASM app is then at `http://localhost:8091/wallet-wasm/`. |
+| **Bare-metal: serve from `ui/`** | `python3 -m http.server 8091 --directory ui/` — the WASM app is then at `http://192.168.29.78:8091/wallet-wasm/`. |
 | **WASM MIME type** | Nginx default config doesn't serve `.wasm` files with `application/wasm`. Always use `deploy/nginx-wasm.conf` or add the MIME type explicitly. Without it: `TypeError: Failed to execute 'compile'`. |
 | **CSS/theme parity** | WASM frontend shares `styles.css` and `themes.json` from `wallet-baseline/`. Any CSS changes must be tested on both UIs. |
 
@@ -727,7 +727,7 @@ Hard-won lessons from building, deploying, and operating KeyCortex. Share these 
 | **Port 8080 is hardcoded** | MVP has no `--port` flag. Check `lsof -i :8080` before starting. |
 | **`--skip-build` for config changes** | After editing nginx configs, docker-compose.yml, or env vars, use `./scripts/setup_docker.sh --skip-build` to restart without the 10-min Rust build. |
 | **Watchdog needs SSH keys for git push** | Without `~/.ssh/id_*` access to `fd_demo_integ` repo, watchdog still logs locally but can't push. Not fatal — errors are retained in `$WATCHDOG_REPO_DIR/keycortex/`. |
-| **Smoke test first** | After any deployment, run: `curl -s localhost:8080/health \| jq .` — this shows storage mode, auth status, JWKS state, and fallback counters in one call. |
+| **Smoke test first** | After any deployment, run: `curl -s 192.168.29.78:8080/health \| jq .` — this shows storage mode, auth status, JWKS state, and fallback counters in one call. |
 
 ### 16.5 Development Workflow (Recommended)
 

@@ -28,7 +28,7 @@ The Treasury Settlement App is the **primary client** of the KeyCortex ecosystem
 
 | Environment | URL |
 |-------------|-----|
-| Local dev | `http://localhost:8080` |
+| Local dev | `http://192.168.29.78:8080` |
 | Container | `http://wallet-service:8080` |
 | Production | Configure via env var |
 
@@ -526,39 +526,39 @@ If `ready` is `false`, do not proceed with wallet operations.
 
 ```bash
 # 1. Health check
-curl -s http://localhost:8080/readyz | jq .ready
+curl -s http://192.168.29.78:8080/readyz | jq .ready
 
 # 2. Create wallet
-WALLET=$(curl -s -X POST http://localhost:8080/wallet/create \
+WALLET=$(curl -s -X POST http://192.168.29.78:8080/wallet/create \
   -H "Content-Type: application/json" \
   -d '{"label": "Treasury Main"}' | jq -r '.wallet_address')
 echo "Wallet: $WALLET"
 
 # 3. Auth challenge
-CHALLENGE=$(curl -s -X POST http://localhost:8080/auth/challenge | jq -r '.challenge')
+CHALLENGE=$(curl -s -X POST http://192.168.29.78:8080/auth/challenge | jq -r '.challenge')
 echo "Challenge: $CHALLENGE"
 
 # 4. Sign challenge
-SIG=$(curl -s -X POST http://localhost:8080/wallet/sign \
+SIG=$(curl -s -X POST http://192.168.29.78:8080/wallet/sign \
   -H "Content-Type: application/json" \
   -d "{\"wallet_address\": \"$WALLET\", \"payload\": \"$CHALLENGE\", \"purpose\": \"auth\"}" \
   | jq -r '.signature')
 
 # 5. Verify
-curl -s -X POST http://localhost:8080/auth/verify \
+curl -s -X POST http://192.168.29.78:8080/auth/verify \
   -H "Content-Type: application/json" \
   -d "{\"wallet_address\": \"$WALLET\", \"challenge\": \"$CHALLENGE\", \"signature\": \"$SIG\"}" | jq .
 
 # 6. Risk check
-curl -s -X POST http://localhost:8080/fortressdigital/wallet-status \
+curl -s -X POST http://192.168.29.78:8080/fortressdigital/wallet-status \
   -H "Content-Type: application/json" \
   -d "{\"wallet_address\": \"$WALLET\", \"chain\": \"flowcortex-l1\"}" | jq .risk_signals
 
 # 7. Get nonce
-NONCE=$(curl -s "http://localhost:8080/wallet/nonce?wallet_address=$WALLET" | jq -r '.next_nonce')
+NONCE=$(curl -s "http://192.168.29.78:8080/wallet/nonce?wallet_address=$WALLET" | jq -r '.next_nonce')
 
 # 8. Submit transaction
-TX=$(curl -s -X POST http://localhost:8080/wallet/submit \
+TX=$(curl -s -X POST http://192.168.29.78:8080/wallet/submit \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: tx-$(date +%s)" \
   -d "{\"from\": \"$WALLET\", \"to\": \"0x0000000000000000000000000000000000000000\", \"amount\": \"1000000\", \"asset\": \"FloweR\", \"chain\": \"flowcortex-l1\", \"nonce\": $NONCE}" \
@@ -566,5 +566,5 @@ TX=$(curl -s -X POST http://localhost:8080/wallet/submit \
 echo "TX: $TX"
 
 # 9. Check status
-curl -s "http://localhost:8080/wallet/tx/$TX" | jq '{status, accepted}'
+curl -s "http://192.168.29.78:8080/wallet/tx/$TX" | jq '{status, accepted}'
 ```

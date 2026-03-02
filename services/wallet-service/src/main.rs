@@ -452,10 +452,34 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(8081);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("wallet-service listening on {}", addr);
+    let tls_enabled = matches!(
+        env::var("TLS_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    );
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    if tls_enabled {
+        rustls::crypto::ring::default_provider().install_default()
+            .expect("install rustls ring CryptoProvider");
+        let cert_path = env::var("TLS_CERT_PATH")
+            .unwrap_or_else(|_| "../certs/keycortex/keycortex.crt".to_string());
+        let key_path = env::var("TLS_KEY_PATH")
+            .unwrap_or_else(|_| "../certs/keycortex/keycortex.key".to_string());
+        info!(
+            "wallet-service HTTPS listening on {} (cert={}, key={})",
+            addr, cert_path, key_path
+        );
+        let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path).await?;
+        axum_server::bind_rustls(addr, tls_config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        info!("wallet-service HTTP listening on {}", addr);
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }

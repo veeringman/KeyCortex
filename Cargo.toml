@@ -22,6 +22,8 @@ authors = ["KeyCortex Team"]
 anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rustls = { version = "0.23", features = ["ring"] }
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 jsonwebtoken = "9"

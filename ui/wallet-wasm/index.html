@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KeyCortex Wallet UI (WASM)</title>
     <link data-trunk rel="copy-dir" href="../wallet-baseline" />
-    <link rel="stylesheet" href="wallet-baseline/styles.css?v=9" />
+    <link rel="stylesheet" href="wallet-baseline/styles.css?v=20" />
   </head>
   <body>
     <div class="wallet-centerer">
@@ -50,22 +50,36 @@
           <p class="subtitle">Signing &amp; auth binding · FlowCortex L1</p>
         </div>
         <div class="runtime">
-          <label for="baseUrl">API</label>
-          <input id="baseUrl" value="" style="grid-column: span 3;" />
-          <label for="formSelect">Form</label>
-          <select id="formSelect">
-            <option value="pocket">Pocket Wallet</option>
-            <option value="folio">Files Folio</option>
-            <option value="electronic">Electronic</option>
-          </select>
-          <label for="skinSelect">Skin</label>
-          <select id="skinSelect">
-            <option value="classic">Classic</option>
-            <option value="dark">Dark Brown</option>
-            <option value="black">Black</option>
-            <option value="navy">Navy Executive</option>
-            <option value="forest">Forest Heritage</option>
-          </select>
+          <div class="config-row">
+            <label for="baseUrl">API</label>
+            <input id="baseUrl" value="" />
+          </div>
+          <div class="config-row">
+            <label for="identityEmail">Email</label>
+            <input id="identityEmail" type="email" placeholder="you@example.com" />
+            <label for="identityPhone">Phone</label>
+            <input id="identityPhone" type="tel" placeholder="+1 555 0100" />
+          </div>
+          <div class="config-row config-device-row">
+            <label>Device</label>
+            <span id="deviceIdDisplay" class="device-id-display">—</span>
+          </div>
+          <div class="config-row">
+            <label for="formSelect">Form</label>
+            <select id="formSelect">
+              <option value="pocket">Pocket Wallet</option>
+              <option value="folio">Files Folio</option>
+              <option value="electronic">Electronic</option>
+            </select>
+            <label for="skinSelect">Skin</label>
+            <select id="skinSelect">
+              <option value="classic">Classic</option>
+              <option value="dark">Dark Brown</option>
+              <option value="black">Black</option>
+              <option value="navy">Navy Executive</option>
+              <option value="forest">Forest Heritage</option>
+            </select>
+          </div>
         </div>
       </header>
       </div>
@@ -79,12 +93,15 @@
             <option value="">— select profile —</option>
           </select>
           <button id="addProfileBtn" class="icon-btn" title="Add profile">＋</button>
+          <button id="removeProfileBtn" class="icon-btn icon-btn--danger" title="Remove profile">✕</button>
         </div>
         <div class="hero-wallet-selector">
-          <strong>Active Wallet</strong>
+          <strong>Wallet</strong>
           <select id="activeWalletSelect">
             <option value="">— no wallets —</option>
           </select>
+          <button id="removeWalletBtn" class="icon-btn icon-btn--danger" title="Remove wallet from device">✕</button>
+          <button id="clearAllWalletsBtn" class="hero-clear-btn" title="Clear all wallets from device">Clear</button>
         </div>
       </section>
 
@@ -290,9 +307,6 @@
       </main>
     </div>
 
-    <script type="module">
-      import init from './pkg/wallet_wasm.js';
-      init();
-    </script>
+    <!-- WASM module is loaded by Trunk's auto-generated init script (appended at build) -->
   </body>
 </html>

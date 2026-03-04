@@ -145,6 +145,107 @@ impl RocksDbKeystore {
         format!("wallet-label:{wallet_address}")
     }
 
+    fn key_for_device_wallet(device_id: &str, wallet_address: &str) -> String {
+        format!("device-wallet:{device_id}:{wallet_address}")
+    }
+
+    fn key_for_device_contact(device_id: &str) -> String {
+        format!("device-contact:{device_id}")
+    }
+
+    fn key_for_wallet_device(wallet_address: &str) -> String {
+        format!("wallet-device:{wallet_address}")
+    }
+
+    fn device_wallet_prefix(device_id: &str) -> String {
+        format!("device-wallet:{device_id}:")
+    }
+
+    /// Link a wallet to a device and record the reverse mapping.
+    pub fn save_device_wallet(&self, device_id: &str, wallet_address: &str) -> Result<()> {
+        let key = Self::key_for_device_wallet(device_id, wallet_address);
+        self.db.put(key.as_bytes(), b"1")?;
+        // Reverse: wallet → device
+        let rev = Self::key_for_wallet_device(wallet_address);
+        self.db.put(rev.as_bytes(), device_id.as_bytes())?;
+        Ok(())
+    }
+
+    /// Save contact info (email/phone) for a device.
+    pub fn save_device_contact(&self, device_id: &str, contact: &str) -> Result<()> {
+        let key = Self::key_for_device_contact(device_id);
+        self.db.put(key.as_bytes(), contact.as_bytes())?;
+        Ok(())
+    }
+
+    /// Load contact info for a device.
+    pub fn load_device_contact(&self, device_id: &str) -> Result<Option<String>> {
+        let key = Self::key_for_device_contact(device_id);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(String::from_utf8(raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Load the device that owns a wallet.
+    pub fn load_wallet_device(&self, wallet_address: &str) -> Result<Option<String>> {
+        let key = Self::key_for_wallet_device(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(String::from_utf8(raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Unlink a wallet from a device.
+    pub fn remove_device_wallet(&self, device_id: &str, wallet_address: &str) -> Result<()> {
+        let key = Self::key_for_device_wallet(device_id, wallet_address);
+        self.db.delete(key.as_bytes())?;
+        let rev = Self::key_for_wallet_device(wallet_address);
+        self.db.delete(rev.as_bytes())?;
+        Ok(())
+    }
+
+    /// List all wallet addresses linked to a specific device.
+    pub fn list_device_wallets(&self, device_id: &str) -> Result<Vec<String>> {
+        let prefix = Self::device_wallet_prefix(device_id);
+        let prefix_bytes = prefix.as_bytes();
+        let mut addresses = Vec::new();
+        for entry in self.db.iterator(IteratorMode::Start) {
+            let (key, _) = entry?;
+            if key.as_ref().starts_with(prefix_bytes) {
+                if let Ok(k) = std::str::from_utf8(&key) {
+                    if let Some(addr) = k.strip_prefix(&prefix) {
+                        addresses.push(addr.to_owned());
+                    }
+                }
+            }
+        }
+        addresses.sort();
+        Ok(addresses)
+    }
+
+    /// Find all device IDs that have the given contact info (email/phone).
+    pub fn list_devices_by_contact(&self, contact: &str) -> Result<Vec<String>> {
+        let prefix = b"device-contact:";
+        let contact_lower = contact.trim().to_lowercase();
+        let mut device_ids = Vec::new();
+        for entry in self.db.iterator(IteratorMode::Start) {
+            let (key, value) = entry?;
+            if key.as_ref().starts_with(prefix) {
+                if let (Ok(k), Ok(v)) = (std::str::from_utf8(&key), std::str::from_utf8(&value)) {
+                    if v.trim().to_lowercase() == contact_lower {
+                        if let Some(did) = k.strip_prefix("device-contact:") {
+                            device_ids.push(did.to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(device_ids)
+    }
+
     pub fn save_wallet_label(&self, wallet_address: &str, label: &str) -> Result<()> {
         let key = Self::key_for_wallet_label(wallet_address);
         self.db.put(key.as_bytes(), label.as_bytes())?;

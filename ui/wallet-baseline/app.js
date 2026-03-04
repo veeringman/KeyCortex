@@ -1,10 +1,136 @@
 const state = {
   manifest: null,
   wallets: [],        // [{wallet_address, chain, bound_user_id, public_key, label}]
+  allServerWallets: [], // all wallets on the server (for "Link from Server")
   profiles: [],       // [{id, name}]
   activeProfile: null, // profile id
   activeWallet: null,  // wallet_address
 };
+
+// ═══════════════════════════════════════════════════════════
+// Custom Modal Dialog — replaces native alert/confirm/prompt
+// ═══════════════════════════════════════════════════════════
+function _getModalEls() {
+  return {
+    overlay: document.getElementById("kcModal"),
+    body:    document.getElementById("kcModalBody"),
+    actions: document.getElementById("kcModalActions"),
+    closeBtn:document.getElementById("kcModalClose"),
+  };
+}
+
+function _closeModal() {
+  const { overlay } = _getModalEls();
+  if (overlay) overlay.hidden = true;
+}
+
+/** Show a simple informational modal (replaces alert). */
+function kcAlert(message) {
+  return new Promise(resolve => {
+    const { overlay, body, actions, closeBtn } = _getModalEls();
+    body.innerHTML = `<p>${message}</p>`;
+    actions.innerHTML = `<button class="kc-modal-btn-ok" id="_kcOk">OK</button>`;
+    overlay.hidden = false;
+    const ok = document.getElementById("_kcOk");
+    const done = () => { _closeModal(); resolve(); };
+    ok.addEventListener("click", done, { once: true });
+    closeBtn.addEventListener("click", done, { once: true });
+    ok.focus();
+  });
+}
+
+/** Show a confirm dialog (replaces confirm). Returns true/false. */
+function kcConfirm(message, { danger = false } = {}) {
+  return new Promise(resolve => {
+    const { overlay, body, actions, closeBtn } = _getModalEls();
+    body.innerHTML = `<p>${message.replace(/\n/g, '<br>')}</p>`;
+    const btnClass = danger ? "kc-modal-btn-danger" : "kc-modal-btn-ok";
+    actions.innerHTML = `
+      <button class="kc-modal-btn-cancel" id="_kcCancel">Cancel</button>
+      <button class="${btnClass}" id="_kcOk">${danger ? 'Remove' : 'OK'}</button>
+    `;
+    overlay.hidden = false;
+    const okBtn = document.getElementById("_kcOk");
+    const cancelBtn = document.getElementById("_kcCancel");
+    const done = (val) => { _closeModal(); resolve(val); };
+    okBtn.addEventListener("click", () => done(true), { once: true });
+    cancelBtn.addEventListener("click", () => done(false), { once: true });
+    closeBtn.addEventListener("click", () => done(false), { once: true });
+    okBtn.focus();
+  });
+}
+
+/** Show a prompt dialog (replaces prompt). Returns string or null. */
+function kcPrompt(message, defaultValue = "") {
+  return new Promise(resolve => {
+    const { overlay, body, actions, closeBtn } = _getModalEls();
+    body.innerHTML = `<p>${message.replace(/\n/g, '<br>')}</p>
+      <input type="text" id="_kcInput" value="${defaultValue.replace(/"/g, '&quot;')}" />`;
+    actions.innerHTML = `
+      <button class="kc-modal-btn-cancel" id="_kcCancel">Cancel</button>
+      <button class="kc-modal-btn-ok" id="_kcOk">OK</button>
+    `;
+    overlay.hidden = false;
+    const input = document.getElementById("_kcInput");
+    const okBtn = document.getElementById("_kcOk");
+    const cancelBtn = document.getElementById("_kcCancel");
+    const done = (val) => { _closeModal(); resolve(val); };
+    okBtn.addEventListener("click", () => done(input.value), { once: true });
+    cancelBtn.addEventListener("click", () => done(null), { once: true });
+    closeBtn.addEventListener("click", () => done(null), { once: true });
+    input.addEventListener("keydown", e => { if (e.key === "Enter") done(input.value); if (e.key === "Escape") done(null); });
+    input.focus();
+    input.select();
+  });
+}
+
+/** Show a list-selection modal (replaces prompt-with-numbers). Returns index or null. */
+function kcSelectList(title, items) {
+  return new Promise(resolve => {
+    const { overlay, body, actions, closeBtn } = _getModalEls();
+    const listHtml = items.map((label, i) =>
+      `<li data-idx="${i}">${label}</li>`
+    ).join("");
+    body.innerHTML = `<p>${title}</p><ul class="kc-modal-list">${listHtml}</ul>`;
+    actions.innerHTML = `<button class="kc-modal-btn-cancel" id="_kcCancel">Cancel</button>`;
+    overlay.hidden = false;
+    const cancelBtn = document.getElementById("_kcCancel");
+    const done = (val) => { _closeModal(); resolve(val); };
+    cancelBtn.addEventListener("click", () => done(null), { once: true });
+    closeBtn.addEventListener("click", () => done(null), { once: true });
+    body.querySelectorAll(".kc-modal-list li").forEach(li => {
+      li.addEventListener("click", () => done(parseInt(li.dataset.idx, 10)), { once: true });
+    });
+  });
+}
+
+// ── Device ID ──
+// Each browser/device gets a unique persistent ID used to scope wallets server-side.
+function getDeviceId() {
+  let id = localStorage.getItem("kc_device_id");
+  if (!id) {
+    id = "dev-" + crypto.randomUUID();
+    localStorage.setItem("kc_device_id", id);
+  }
+  return id;
+}
+
+// Return the saved contact info (email or phone), or null if none set.
+function getContactInfo() {
+  return localStorage.getItem("kc_contact_info") || null;
+}
+
+function saveContactInfo() {
+  const email = (document.getElementById("identityEmail")?.value || "").trim();
+  const phone = (document.getElementById("identityPhone")?.value || "").trim();
+  // Prefer email, fall back to phone
+  const info = email || phone || "";
+  if (info) {
+    localStorage.setItem("kc_contact_info", info);
+  } else {
+    localStorage.removeItem("kc_contact_info");
+  }
+}
 
 const byId = (id) => document.getElementById(id);
 
@@ -65,7 +191,14 @@ const elements = {
   // Profile & wallet selector
   profileSelect: byId("profileSelect"),
   addProfileBtn: byId("addProfileBtn"),
+  removeProfileBtn: byId("removeProfileBtn"),
   activeWalletSelect: byId("activeWalletSelect"),
+  removeWalletBtn: byId("removeWalletBtn"),
+  clearAllWalletsBtn: byId("clearAllWalletsBtn"),
+  // Identity / device config
+  identityEmail: byId("identityEmail"),
+  identityPhone: byId("identityPhone"),
+  deviceIdDisplay: byId("deviceIdDisplay"),
   // Platform integration elements
   chainConfigBtn: byId("chainConfigBtn"),
   chainConfigResult: byId("chainConfigResult"),
@@ -222,13 +355,17 @@ document.addEventListener("DOMContentLoaded", () => {
 function baseUrl() {
   const v = elements.baseUrl.value.trim().replace(/\/+$/, "");
   if (v) return v;
-  // Auto-detect: same origin but port 8080; handles Codespace/devcontainer forwarding
+  // Auto-detect: same origin but port 8811; handles Codespace/devcontainer forwarding
   const loc = window.location;
   if (loc.hostname.includes("app.github.dev") || loc.hostname.includes("preview.app.github.dev")) {
     // Codespace: replace port portion in hostname  e.g. xxx-8090.app.github.dev → xxx-8080.app.github.dev
     return loc.protocol + "//" + loc.hostname.replace(/\d+-(\d+)/, (m, p) => m.replace(p, "8080")).replace("-8090.", "-8080.");
   }
-  return loc.protocol + "//" + loc.hostname + ":8811";
+  // Always use https for the API — backend services run with TLS enabled.
+  // The UI may be served over plain HTTP (python3 -m http.server) but the
+  // API at port 8811 expects HTTPS.  Using loc.protocol would send http://
+  // requests which the TLS-enabled backend rejects.
+  return "https://" + loc.hostname + ":8811";
 }
 
 
@@ -309,13 +446,22 @@ function setActiveTab(tabId) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${baseUrl()}${path}`, {
-    headers: {
-      "content-type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl()}${path}`, {
+      headers: {
+        "content-type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+  } catch (fetchErr) {
+    // Typically a TLS / self-signed cert rejection or network down
+    const apiHost = baseUrl();
+    throw new Error(
+      `Network error: ${fetchErr.message}\n\nIf using a self-signed certificate, open ${apiHost}/health in a new tab, accept the certificate, then retry.`
+    );
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const body = contentType.includes("application/json")
@@ -387,9 +533,11 @@ async function onCreateWallet() {
   try {
     const label = elements.walletLabelInput.value.trim() || undefined;
     const passphrase = elements.walletPassphraseInput.value || undefined;
-    const body = {};
+    const body = { device_id: getDeviceId() };
     if (label) body.label = label;
     if (passphrase) body.passphrase = passphrase;
+    const ci = getContactInfo();
+    if (ci) body.contact_info = ci;
     const result = await request("/wallet/create", {
       method: "POST",
       body: JSON.stringify(body),
@@ -412,8 +560,10 @@ async function onRestoreWallet() {
     const passphrase = elements.walletPassphraseInput.value;
     if (!passphrase) throw new Error("passphrase is required for restore");
     const label = elements.walletLabelInput.value.trim() || undefined;
-    const body = { passphrase };
+    const body = { passphrase, device_id: getDeviceId() };
     if (label) body.label = label;
+    const ci = getContactInfo();
+    if (ci) body.contact_info = ci;
     const result = await request("/wallet/restore", {
       method: "POST",
       body: JSON.stringify(body),
@@ -442,7 +592,7 @@ async function onRestoreWallet() {
 async function onRenameWallet(walletAddress) {
   const w = state.wallets.find(w => w.wallet_address === walletAddress);
   const currentName = w?.label || "";
-  const newName = prompt("Rename wallet:", currentName);
+  const newName = await kcPrompt("Rename wallet:", currentName);
   if (newName === null || !newName.trim()) return;
   try {
     await request("/wallet/rename", {
@@ -451,7 +601,7 @@ async function onRenameWallet(walletAddress) {
     });
     await loadWalletList();
   } catch (error) {
-    alert("Rename failed: " + error.message);
+    await kcAlert("Rename failed: " + error.message);
   }
 }
 
@@ -644,8 +794,8 @@ async function onProfileChange() {
   updateHalfFoldInfo();
 }
 
-function onAddProfile() {
-  const name = prompt("Enter profile / user name:");
+async function onAddProfile() {
+  const name = await kcPrompt("Enter profile / user name:");
   if (!name || !name.trim()) return;
   const id = "profile-" + Date.now();
   state.profiles.push({ id, name: name.trim() });
@@ -657,10 +807,78 @@ function onAddProfile() {
   updateHalfFoldInfo();
 }
 
+async function onRemoveProfile() {
+  if (state.profiles.length <= 1) {
+    await kcAlert("Cannot remove the last profile.");
+    return;
+  }
+  const current = state.profiles.find(p => p.id === state.activeProfile);
+  const name = current ? current.name : state.activeProfile;
+  if (!await kcConfirm(`Remove profile "${name}" from this device?\n\n(Wallets are NOT deleted from the server.)`, { danger: true })) return;
+
+  // Remove wallet assignments for this profile
+  const map = getProfileWalletMap();
+  delete map[state.activeProfile];
+  saveProfileWalletMap(map);
+
+  // Remove the profile
+  state.profiles = state.profiles.filter(p => p.id !== state.activeProfile);
+  saveProfiles();
+
+  // Switch to first remaining profile
+  state.activeProfile = state.profiles[0].id;
+  localStorage.setItem("kc_active_profile", state.activeProfile);
+  renderProfileSelect();
+  loadWalletList();
+  updateHalfFoldInfo();
+}
+
+async function onRemoveActiveWallet() {
+  const addr = state.activeWallet;
+  if (!addr) {
+    await kcAlert("No wallet is currently selected.");
+    return;
+  }
+  const w = state.wallets.find(w => w.wallet_address === addr);
+  const label = w ? (w.label || addr.slice(0, 10) + "\u2026") : addr.slice(0, 10) + "\u2026";
+  if (!await kcConfirm(`Remove wallet "${label}" from this device?\n\n(The wallet still exists on the server and can be re-linked.)`, { danger: true })) return;
+
+  // Unlink from device on server (persists across page reloads)
+  unlinkWalletFromDevice(addr);
+}
+
+async function onClearAllWallets() {
+  if (state.wallets.length === 0) {
+    await kcAlert("No wallets to clear.");
+    return;
+  }
+  if (!await kcConfirm(`Remove all ${state.wallets.length} wallet(s) from this device?\n\nWallets are NOT deleted from the server. You can re-link them later.`, { danger: true })) return;
+
+  const addrs = state.wallets.map(w => w.wallet_address);
+  for (const addr of addrs) {
+    try {
+      await request("/wallet/device-unlink", {
+        method: "POST",
+        body: JSON.stringify({ device_id: getDeviceId(), wallet_address: addr }),
+      });
+    } catch { /* continue clearing */ }
+  }
+
+  // Clear all local profile-wallet assignments
+  localStorage.removeItem("kc_profile_wallets");
+  state.activeWallet = null;
+  await loadWalletList();
+  updateHalfFoldInfo();
+}
+
 // ── Wallet list ──
 async function loadWalletList() {
   try {
-    const result = await request("/wallet/list", { method: "GET", headers: {} });
+    const deviceId = getDeviceId();
+    const ci = getContactInfo();
+    let url = `/wallet/list?device_id=${encodeURIComponent(deviceId)}`;
+    if (ci) url += `&contact_info=${encodeURIComponent(ci)}`;
+    const result = await request(url, { method: "GET", headers: {} });
     state.wallets = result.wallets || [];
   } catch {
     state.wallets = [];
@@ -676,7 +894,7 @@ async function loadWalletList() {
 }
 
 function getProfileWalletMap() {
-  // Map of profile -> [wallet_address], stored locally
+  // Map of profile -> [wallet_address], stored locally (legacy / profile-level grouping)
   try {
     return JSON.parse(localStorage.getItem("kc_profile_wallets") || "{}");
   } catch { return {}; }
@@ -684,6 +902,19 @@ function getProfileWalletMap() {
 
 function saveProfileWalletMap(map) {
   localStorage.setItem("kc_profile_wallets", JSON.stringify(map));
+}
+
+/** Remove stale wallet addresses from profile assignments that no longer exist on the server. */
+function _pruneStaleProfileWallets() {
+  const serverAddrs = new Set(state.wallets.map(w => w.wallet_address));
+  const map = getProfileWalletMap();
+  let changed = false;
+  for (const pid of Object.keys(map)) {
+    const before = map[pid].length;
+    map[pid] = (map[pid] || []).filter(a => serverAddrs.has(a));
+    if (map[pid].length !== before) changed = true;
+  }
+  if (changed) saveProfileWalletMap(map);
 }
 
 function assignWalletToProfile(walletAddress, profileId) {
@@ -706,16 +937,75 @@ function unassignWalletFromProfile(walletAddress, profileId) {
 function getWalletsForProfile(profileId) {
   const map = getProfileWalletMap();
   const assigned = map[profileId] || [];
-  // Return wallets that exist in backend AND are assigned to this profile
-  // Plus unassigned wallets shown at bottom
+  // All wallets are already device-scoped from the server.
+  // Profile assignment is an additional local grouping layer.
   return {
     assigned: state.wallets.filter(w => assigned.includes(w.wallet_address)),
-    unassigned: state.wallets.filter(w => {
-      // Not assigned to ANY profile
-      const allAssigned = Object.values(map).flat();
-      return !allAssigned.includes(w.wallet_address);
-    }),
+    unassigned: state.wallets.filter(w => !assigned.includes(w.wallet_address)),
   };
+}
+
+// ── Device-level link/unlink (server-side) ──
+async function linkWalletToDevice(walletAddress) {
+  try {
+    await request("/wallet/device-link", {
+      method: "POST",
+      body: JSON.stringify({ device_id: getDeviceId(), wallet_address: walletAddress }),
+    });
+    await loadWalletList();
+  } catch (error) {
+    await kcAlert("Link failed: " + error.message);
+  }
+}
+
+async function unlinkWalletFromDevice(walletAddress) {
+  try {
+    await request("/wallet/device-unlink", {
+      method: "POST",
+      body: JSON.stringify({ device_id: getDeviceId(), wallet_address: walletAddress }),
+    });
+    // Also remove from local profile assignment
+    const map = getProfileWalletMap();
+    for (const pid of Object.keys(map)) {
+      map[pid] = (map[pid] || []).filter(a => a !== walletAddress);
+    }
+    saveProfileWalletMap(map);
+    await loadWalletList();
+    // If we just unlinked the active wallet, clear it
+    if (state.activeWallet === walletAddress) {
+      state.activeWallet = state.wallets.length > 0 ? state.wallets[0].wallet_address : null;
+      if (state.activeWallet) selectActiveWallet(state.activeWallet);
+      else updateHalfFoldInfo();
+    }
+  } catch (error) {
+    await kcAlert("Unlink failed: " + error.message);
+  }
+}
+
+async function showLinkFromServerDialog() {
+  try {
+    // Fetch ALL wallets from server (no device filter)
+    const result = await request("/wallet/list", { method: "GET", headers: {} });
+    const allWallets = result.wallets || [];
+    const deviceAddrs = new Set(state.wallets.map(w => w.wallet_address));
+    const available = allWallets.filter(w => !deviceAddrs.has(w.wallet_address));
+
+    if (available.length === 0) {
+      await kcAlert("All server wallets are already linked to this device.");
+      return;
+    }
+
+    // Build a list for the selection modal
+    const labels = available.map(w => {
+      const short = w.wallet_address.slice(0, 10) + "\u2026" + w.wallet_address.slice(-6);
+      return `${w.label || "unnamed"} \u2014 ${short}`;
+    });
+    const idx = await kcSelectList("Link a wallet from the server to this device:", labels);
+    if (idx === null || idx < 0 || idx >= available.length) return;
+    await linkWalletToDevice(available[idx].wallet_address);
+  } catch (error) {
+    await kcAlert("Error fetching server wallets: " + error.message);
+  }
 }
 
 function renderWalletList() {
@@ -725,40 +1015,49 @@ function renderWalletList() {
   const all = [...assigned, ...unassigned];
 
   if (all.length === 0) {
-    container.innerHTML = '<div class="wallet-card wallet-card--empty">No wallets yet. Create one below.</div>';
-    return;
+    container.innerHTML = '<div class="wallet-card wallet-card--empty">No wallets linked to this device. Create one below or link from server.</div>';
+  } else {
+    for (const w of all) {
+      const isAssigned = assigned.includes(w);
+      const isActive = w.wallet_address === state.activeWallet;
+      const card = document.createElement("div");
+      card.className = "wallet-card" + (isActive ? " wallet-card--active" : "");
+      const shortAddr = w.wallet_address.slice(0, 8) + "\u2026" + w.wallet_address.slice(-6);
+      const labelHtml = w.label
+        ? `<div class="wc-label" title="Click to rename">${w.label}</div>`
+        : `<div class="wc-label wc-label--empty" title="Click to name">unnamed</div>`;
+      const userLabel = w.bound_user_id ? `<span class="wc-user">${w.bound_user_id}</span>` : "";
+      const profileLabel = isAssigned
+        ? `<span class="wc-profile wc-profile--mine">\u2713 ${getProfileName(state.activeProfile)}</span>`
+        : `<span class="wc-profile wc-profile--none">unassigned</span>`;
+      const shortPubKey = w.public_key ? w.public_key.slice(0, 8) + "\u2026" + w.public_key.slice(-6) : "";
+      card.innerHTML = `
+        ${labelHtml}
+        <div class="wc-address" title="${w.wallet_address}">${shortAddr}</div>
+        <div class="wc-meta">${w.chain} ${userLabel} ${profileLabel}</div>
+        ${shortPubKey ? `<div class="wc-pubkey" title="${w.public_key}">pk: ${shortPubKey}</div>` : ""}
+        <div class="wc-actions">
+          <button class="wc-select-btn secondary" data-addr="${w.wallet_address}">Use</button>
+          <button class="wc-rename-btn icon-btn" data-addr="${w.wallet_address}" title="Rename">\u270E</button>
+          ${isAssigned
+            ? `<button class="wc-unassign-btn icon-btn" data-addr="${w.wallet_address}" title="Remove from profile">&minus;</button>`
+            : `<button class="wc-assign-btn icon-btn" data-addr="${w.wallet_address}" title="Assign to profile">&plus;</button>`
+          }
+          <button class="wc-remove-btn" data-addr="${w.wallet_address}" title="Remove wallet from this device">&times;</button>
+        </div>
+      `;
+      container.appendChild(card);
+    }
   }
 
-  for (const w of all) {
-    const isAssigned = assigned.includes(w);
-    const isActive = w.wallet_address === state.activeWallet;
-    const card = document.createElement("div");
-    card.className = "wallet-card" + (isActive ? " wallet-card--active" : "");
-    const shortAddr = w.wallet_address.slice(0, 8) + "\u2026" + w.wallet_address.slice(-6);
-    const labelHtml = w.label
-      ? `<div class="wc-label" title="Click to rename">${w.label}</div>`
-      : `<div class="wc-label wc-label--empty" title="Click to name">unnamed</div>`;
-    const userLabel = w.bound_user_id ? `<span class="wc-user">${w.bound_user_id}</span>` : "";
-    const profileLabel = isAssigned
-      ? `<span class="wc-profile wc-profile--mine">\u2713 ${getProfileName(state.activeProfile)}</span>`
-      : `<span class="wc-profile wc-profile--none">unassigned</span>`;
-    const shortPubKey = w.public_key ? w.public_key.slice(0, 8) + "\u2026" + w.public_key.slice(-6) : "";
-    card.innerHTML = `
-      ${labelHtml}
-      <div class="wc-address" title="${w.wallet_address}">${shortAddr}</div>
-      <div class="wc-meta">${w.chain} ${userLabel} ${profileLabel}</div>
-      ${shortPubKey ? `<div class="wc-pubkey" title="${w.public_key}">pk: ${shortPubKey}</div>` : ""}
-      <div class="wc-actions">
-        <button class="wc-select-btn secondary" data-addr="${w.wallet_address}">Use</button>
-        <button class="wc-rename-btn icon-btn" data-addr="${w.wallet_address}" title="Rename">✎</button>
-        ${isAssigned
-          ? `<button class="wc-unassign-btn icon-btn" data-addr="${w.wallet_address}" title="Remove from profile">&minus;</button>`
-          : `<button class="wc-assign-btn icon-btn" data-addr="${w.wallet_address}" title="Assign to profile">&plus;</button>`
-        }
-      </div>
-    `;
-    container.appendChild(card);
-  }
+  // "Link from Server" and "Clear All" buttons at the bottom
+  const actionRow = document.createElement("div");
+  actionRow.className = "wallet-card wallet-card--actions";
+  actionRow.innerHTML = `
+    <button class="wc-link-server-btn secondary" title="Link an existing server wallet to this device">\u2B07 Link from Server</button>
+    ${all.length > 0 ? '<button class="wc-clear-all-btn icon-btn icon-btn--danger" title="Remove all wallets from this device">\u2715 Clear All</button>' : ''}
+  `;
+  container.appendChild(actionRow);
 
   // Wire card buttons
   container.querySelectorAll(".wc-select-btn").forEach(btn => {
@@ -789,6 +1088,21 @@ function renderWalletList() {
       renderWalletSelector();
     });
   });
+  container.querySelectorAll(".wc-remove-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (await kcConfirm("Remove this wallet from this device?\n\nThe wallet still exists on the server and can be re-linked.", { danger: true })) {
+        unlinkWalletFromDevice(btn.dataset.addr);
+      }
+    });
+  });
+  const linkServerBtn = container.querySelector(".wc-link-server-btn");
+  if (linkServerBtn) {
+    linkServerBtn.addEventListener("click", showLinkFromServerDialog);
+  }
+  const clearAllBtn = container.querySelector(".wc-clear-all-btn");
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener("click", onClearAllWallets);
+  }
 }
 
 function getProfileName(profileId) {
@@ -965,7 +1279,10 @@ function bindEvents() {
   elements.restoreWalletBtn.addEventListener("click", onRestoreWallet);
   elements.profileSelect.addEventListener("change", onProfileChange);
   elements.addProfileBtn.addEventListener("click", onAddProfile);
+  elements.removeProfileBtn.addEventListener("click", onRemoveProfile);
   elements.activeWalletSelect.addEventListener("change", onWalletSelectorChange);
+  elements.removeWalletBtn.addEventListener("click", onRemoveActiveWallet);
+  elements.clearAllWalletsBtn.addEventListener("click", onClearAllWallets);
   elements.challengeBtn.addEventListener("click", onChallenge);
   elements.verifyBtn.addEventListener("click", onVerify);
   elements.bindWalletBtn.addEventListener("click", onBindWallet);
@@ -999,6 +1316,16 @@ function bindEvents() {
   });
 
   elements.skinCycleBtn.addEventListener("click", cycleSkin);
+
+  // Identity / contact fields — persist on blur
+  if (elements.identityEmail) {
+    elements.identityEmail.addEventListener("blur", saveContactInfo);
+    elements.identityEmail.addEventListener("change", saveContactInfo);
+  }
+  if (elements.identityPhone) {
+    elements.identityPhone.addEventListener("blur", saveContactInfo);
+    elements.identityPhone.addEventListener("change", saveContactInfo);
+  }
 }
 
 async function main() {
@@ -1015,17 +1342,42 @@ async function main() {
   }
   applyForm(elements.formSelect.value);
 
+  // Restore identity / device config
+  const savedContact = localStorage.getItem("kc_contact_info") || "";
+  if (savedContact) {
+    // If it looks like an email, put in email field; otherwise phone
+    if (savedContact.includes("@")) {
+      if (elements.identityEmail) elements.identityEmail.value = savedContact;
+    } else {
+      if (elements.identityPhone) elements.identityPhone.value = savedContact;
+    }
+  }
+  if (elements.deviceIdDisplay) {
+    elements.deviceIdDisplay.textContent = getDeviceId();
+  }
+
   // Load profiles and wallets
   loadProfiles();
   await loadWalletList();
 
-  // Restore last active wallet
+  // Restore last active wallet — clean up stale references
   const savedWallet = localStorage.getItem("kc_active_wallet");
   if (savedWallet && state.wallets.some(w => w.wallet_address === savedWallet)) {
     selectActiveWallet(savedWallet);
-  } else if (state.wallets.length > 0) {
-    selectActiveWallet(state.wallets[0].wallet_address);
+  } else {
+    // Saved wallet no longer exists on server — clear stale reference
+    localStorage.removeItem("kc_active_wallet");
+    if (state.wallets.length > 0) {
+      selectActiveWallet(state.wallets[0].wallet_address);
+    } else {
+      state.activeWallet = null;
+      renderWalletSelector();
+      updateHalfFoldInfo();
+    }
   }
+
+  // Prune stale profile-wallet assignments (wallets that no longer exist on server)
+  _pruneStaleProfileWallets();
 
   bindEvents();
   await loadManifest();

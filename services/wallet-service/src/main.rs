@@ -16,6 +16,7 @@ use kc_api_types::{
     WalletBalanceResponse, WalletCreateRequest, WalletCreateResponse, WalletListResponse,
     WalletRenameRequest, WalletRenameResponse, WalletRestoreRequest, WalletRestoreResponse,
     WalletSignRequest, WalletSignResponse, WalletSubmitResponse, WalletSummary, WalletAddress,
+    DeviceLinkRequest, DeviceLinkResponse, DeviceUnlinkRequest, DeviceUnlinkResponse,
 };
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
@@ -368,6 +369,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
+                .danger_accept_invalid_certs(true)
                 .build()
                 .ok();
             let mut failure_count: u32 = 0;
@@ -699,6 +701,7 @@ async fn wallet_create(
 ) -> ApiResult<WalletCreateResponse> {
     let label = body.label.clone();
     let passphrase = body.passphrase.clone();
+    let device_id = body.device_id.clone();
 
     let signer = match &passphrase {
         Some(pp) if !pp.trim().is_empty() => Ed25519Signer::from_passphrase(pp),
@@ -723,6 +726,22 @@ async fn wallet_create(
         }
     }
 
+    // Link wallet to device if device_id provided
+    if let Some(did) = &device_id {
+        if !did.trim().is_empty() {
+            let _ = state.keystore.save_device_wallet(did.trim(), &wallet_address);
+        }
+    }
+
+    // Save contact info for device if provided
+    if let Some(ref did) = device_id {
+        if let Some(ref contact) = body.contact_info {
+            if !did.trim().is_empty() && !contact.trim().is_empty() {
+                let _ = state.keystore.save_device_contact(did.trim(), contact.trim());
+            }
+        }
+    }
+
     Ok(Json(WalletCreateResponse {
         wallet_address,
         public_key,
@@ -731,12 +750,63 @@ async fn wallet_create(
     }))
 }
 
-async fn wallet_list(State(state): State<Arc<AppState>>) -> ApiResult<WalletListResponse> {
-    let addresses = state
-        .keystore
-        .list_wallet_addresses()
-        .await
-        .map_err(internal_error)?;
+#[derive(Debug, Deserialize)]
+struct WalletListQuery {
+    device_id: Option<String>,
+    contact_info: Option<String>,
+}
+
+async fn wallet_list(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<WalletListQuery>,
+) -> ApiResult<WalletListResponse> {
+    let addresses = match (&query.device_id, &query.contact_info) {
+        (Some(did), _) if !did.trim().is_empty() => {
+            // Primary: filter by device_id
+            let mut addrs = state.keystore.list_device_wallets(did.trim()).map_err(internal_error)?;
+            // Also include wallets from other devices sharing the same contact info
+            if let Some(ci) = &query.contact_info {
+                if !ci.trim().is_empty() {
+                    if let Ok(related_devices) = state.keystore.list_devices_by_contact(ci.trim()) {
+                        for rd in &related_devices {
+                            if rd != did.trim() {
+                                if let Ok(extra) = state.keystore.list_device_wallets(rd) {
+                                    for a in extra {
+                                        if !addrs.contains(&a) {
+                                            addrs.push(a);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            addrs.sort();
+            addrs
+        }
+        (_, Some(ci)) if !ci.trim().is_empty() => {
+            // No device_id but contact_info provided — find all devices with this contact
+            let mut addrs = Vec::new();
+            if let Ok(devices) = state.keystore.list_devices_by_contact(ci.trim()) {
+                for did in &devices {
+                    if let Ok(dw) = state.keystore.list_device_wallets(did) {
+                        for a in dw {
+                            if !addrs.contains(&a) {
+                                addrs.push(a);
+                            }
+                        }
+                    }
+                }
+            }
+            addrs.sort();
+            addrs
+        }
+        _ => {
+            // No device filter — return all wallets
+            state.keystore.list_wallet_addresses().await.map_err(internal_error)?
+        }
+    };
 
     let mut wallets = Vec::with_capacity(addresses.len());
     for addr in &addresses {
@@ -763,6 +833,7 @@ async fn wallet_list(State(state): State<Arc<AppState>>) -> ApiResult<WalletList
             bound_user_id: binding.map(|b| b.user_id),
             public_key: pub_key,
             label: state.keystore.load_wallet_label(addr).ok().flatten(),
+            device_id: state.keystore.load_wallet_device(addr).ok().flatten(),
         });
     }
 
@@ -808,6 +879,22 @@ async fn wallet_restore(
         }
     }
 
+    // Link wallet to device if device_id provided
+    if let Some(did) = &request.device_id {
+        if !did.trim().is_empty() {
+            let _ = state.keystore.save_device_wallet(did.trim(), &wallet_address);
+        }
+    }
+
+    // Save contact info for device if provided
+    if let Some(ref did) = request.device_id {
+        if let Some(ref contact) = request.contact_info {
+            if !did.trim().is_empty() && !contact.trim().is_empty() {
+                let _ = state.keystore.save_device_contact(did.trim(), contact.trim());
+            }
+        }
+    }
+
     let label = state.keystore.load_wallet_label(&wallet_address).ok().flatten();
 
     Ok(Json(WalletRestoreResponse {
@@ -816,6 +903,63 @@ async fn wallet_restore(
         chain: FLOWCORTEX_L1.to_owned(),
         label,
         already_existed,
+    }))
+}
+
+async fn wallet_device_link(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<DeviceLinkRequest>,
+) -> ApiResult<DeviceLinkResponse> {
+    if request.device_id.trim().is_empty() {
+        return Err(bad_request("device_id is required"));
+    }
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
+    // Verify wallet exists on server
+    let exists = state
+        .keystore
+        .load_encrypted_key(&request.wallet_address)
+        .await
+        .map_err(internal_error)?
+        .is_some();
+    if !exists {
+        return Err(bad_request("wallet not found on server"));
+    }
+
+    state
+        .keystore
+        .save_device_wallet(&request.device_id, &request.wallet_address)
+        .map_err(internal_error)?;
+
+    Ok(Json(DeviceLinkResponse {
+        device_id: request.device_id,
+        wallet_address: request.wallet_address,
+        linked: true,
+    }))
+}
+
+async fn wallet_device_unlink(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<DeviceUnlinkRequest>,
+) -> ApiResult<DeviceUnlinkResponse> {
+    if request.device_id.trim().is_empty() {
+        return Err(bad_request("device_id is required"));
+    }
+    if request.wallet_address.trim().is_empty() {
+        return Err(bad_request("wallet_address is required"));
+    }
+
+    state
+        .keystore
+        .remove_device_wallet(&request.device_id, &request.wallet_address)
+        .map_err(internal_error)?;
+
+    Ok(Json(DeviceUnlinkResponse {
+        device_id: request.device_id,
+        wallet_address: request.wallet_address,
+        unlinked: true,
     }))
 }
 
@@ -1019,6 +1163,8 @@ fn build_app(state: AppState) -> Router {
         .route("/wallet/list", get(wallet_list))
         .route("/wallet/restore", post(wallet_restore))
         .route("/wallet/rename", post(wallet_rename))
+        .route("/wallet/device-link", post(wallet_device_link))
+        .route("/wallet/device-unlink", post(wallet_device_unlink))
         .route("/wallet/sign", post(wallet_sign))
         .route("/wallet/submit", post(submit::wallet_submit))
         .route("/wallet/nonce", get(submit::wallet_nonce))

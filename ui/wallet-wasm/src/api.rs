@@ -23,7 +23,7 @@ pub fn base_url() -> String {
 
     let loc = dom::window().location();
     let host = loc.hostname().unwrap_or_default();
-    let protocol = loc.protocol().unwrap_or_else(|_| "http:".into());
+    let _protocol = loc.protocol().unwrap_or_else(|_| "http:".into());
 
     // GitHub Codespaces: rewrite port in hostname
     if host.contains(".app.github.dev") {
@@ -34,7 +34,10 @@ pub fn base_url() -> String {
         return format!("https://{}-8080.app.github.dev", prefix);
     }
 
-    format!("{}//{}:8811", protocol, host)
+    // Always use HTTPS for the API — backend services run with TLS enabled.
+    // The UI may be served over plain HTTP (python3 -m http.server) but the
+    // API at port 8811 expects HTTPS.
+    format!("https://{}:8811", host)
 }
 
 /// Perform a fetch request, returning the parsed JSON as `serde_json::Value`.
@@ -64,9 +67,16 @@ pub async fn request(
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{:?}", e))?;
 
     let window = dom::window();
-    let resp_value = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("fetch error: {:?}", e))?;
+    let resp_value = match JsFuture::from(window.fetch_with_request(&request)).await {
+        Ok(v) => v,
+        Err(e) => {
+            let api_host = base_url();
+            return Err(format!(
+                "Network error: {:?}\n\nIf using a self-signed certificate, open {}/health in a new tab, accept the certificate, then retry.",
+                e, api_host
+            ));
+        }
+    };
 
     let resp: Response = resp_value
         .dyn_into()

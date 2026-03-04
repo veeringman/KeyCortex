@@ -172,3 +172,19 @@ pub fn local_set(key: &str, value: &str) {
         let _ = s.set_item(key, value);
     }
 }
+
+/// Return a persistent device ID (generated once per browser, stored in localStorage).
+pub fn get_device_id() -> String {
+    if let Some(id) = local_get("kc_device_id") {
+        return id;
+    }
+    // Generate a simple pseudo-UUID using js_sys::Math::random
+    let seg = |n: usize| -> String {
+        (0..n)
+            .map(|_| format!("{:x}", (js_sys::Math::random() * 16.0) as u8 % 16))
+            .collect()
+    };
+    let id = format!("dev-{}-{}-{}-{}", seg(8), seg(4), seg(4), seg(12));
+    local_set("kc_device_id", &id);
+    id
+}

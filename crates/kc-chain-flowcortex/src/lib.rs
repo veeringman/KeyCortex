@@ -31,7 +31,11 @@ impl FlowCortexAdapter {
             .unwrap_or_else(|| "http://192.168.29.78:8082".to_string());
         Self {
             endpoint: endpoint.trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
+            // Accept self-signed TLS certificates (local demo uses self-signed certs)
+            http: reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .expect("failed to build reqwest client"),
         }
     }
 }

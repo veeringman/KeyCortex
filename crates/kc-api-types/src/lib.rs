@@ -27,6 +27,15 @@ pub struct WalletCreateRequest {
     /// Contact info (email or phone) associated with this device.
     #[serde(default)]
     pub contact_info: Option<String>,
+    /// Owner email for identity-based wallet lookup.
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Owner phone for identity-based wallet lookup.
+    #[serde(default)]
+    pub phone: Option<String>,
+    /// Bank identifier for institutional wallet lookup.
+    #[serde(default)]
+    pub bank_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +56,15 @@ pub struct WalletSummary {
     /// Device that created or owns this wallet (populated when device_id filter is used).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    /// Linked email identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Linked phone identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    /// Linked bank identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -237,6 +255,15 @@ pub struct WalletRestoreRequest {
     /// Contact info (email or phone) associated with this device.
     #[serde(default)]
     pub contact_info: Option<String>,
+    /// Owner email for identity-based wallet lookup.
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Owner phone for identity-based wallet lookup.
+    #[serde(default)]
+    pub phone: Option<String>,
+    /// Bank identifier for institutional wallet lookup.
+    #[serde(default)]
+    pub bank_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,4 +311,26 @@ pub struct DeviceUnlinkResponse {
     pub device_id: String,
     pub wallet_address: String,
     pub unlinked: bool,
+}
+
+// ─── Wallet identity lookup types ───
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletLookupRequest {
+    /// Find wallets by owner email.
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Find wallets by owner phone.
+    #[serde(default)]
+    pub phone: Option<String>,
+    /// Find wallets by bank identifier.
+    #[serde(default)]
+    pub bank_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletLookupResponse {
+    pub wallets: Vec<WalletSummary>,
+    pub total: usize,
+    pub matched_by: String,
 }

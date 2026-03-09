@@ -199,6 +199,13 @@ const elements = {
   identityEmail: byId("identityEmail"),
   identityPhone: byId("identityPhone"),
   deviceIdDisplay: byId("deviceIdDisplay"),
+  // Wallet identity lookup
+  lookupEmail: byId("lookupEmail"),
+  lookupPhone: byId("lookupPhone"),
+  lookupBankId: byId("lookupBankId"),
+  lookupWalletsBtn: byId("lookupWalletsBtn"),
+  lookupResultContainer: byId("lookupResultContainer"),
+  lookupResult: byId("lookupResult"),
   // Platform integration elements
   chainConfigBtn: byId("chainConfigBtn"),
   chainConfigResult: byId("chainConfigResult"),
@@ -538,6 +545,11 @@ async function onCreateWallet() {
     if (passphrase) body.passphrase = passphrase;
     const ci = getContactInfo();
     if (ci) body.contact_info = ci;
+    // Pass identity fields for wallet↔identity linking
+    const email = (elements.identityEmail?.value || "").trim();
+    const phone = (elements.identityPhone?.value || "").trim();
+    if (email) body.email = email;
+    if (phone) body.phone = phone;
     const result = await request("/wallet/create", {
       method: "POST",
       body: JSON.stringify(body),
@@ -564,6 +576,11 @@ async function onRestoreWallet() {
     if (label) body.label = label;
     const ci = getContactInfo();
     if (ci) body.contact_info = ci;
+    // Pass identity fields for wallet↔identity linking
+    const email = (elements.identityEmail?.value || "").trim();
+    const phone = (elements.identityPhone?.value || "").trim();
+    if (email) body.email = email;
+    if (phone) body.phone = phone;
     const result = await request("/wallet/restore", {
       method: "POST",
       body: JSON.stringify(body),
@@ -586,6 +603,58 @@ async function onRestoreWallet() {
     elements.restoreHint.style.display = "block";
     elements.restoreHint.style.color = "#ef4444";
     setTimeout(() => { elements.restoreHint.style.display = "none"; }, 5000);
+  }
+}
+
+async function onLookupWallets() {
+  const email = (elements.lookupEmail?.value || "").trim() || undefined;
+  const phone = (elements.lookupPhone?.value || "").trim() || undefined;
+  const bank_id = (elements.lookupBankId?.value || "").trim() || undefined;
+  if (!email && !phone && !bank_id) {
+    setResult(elements.lookupResult, "Please enter at least one identifier (email, phone, or bank).", true);
+    return;
+  }
+  try {
+    const result = await request("/wallet/lookup", {
+      method: "POST",
+      body: JSON.stringify({ email, phone, bank_id }),
+    });
+    setResult(elements.lookupResult, result);
+    const container = elements.lookupResultContainer;
+    container.innerHTML = "";
+    const wallets = result.wallets || [];
+    if (wallets.length === 0) {
+      container.innerHTML = '<div class="wallet-card wallet-card--empty">No wallets found for this identity.</div>';
+    } else {
+      for (const w of wallets) {
+        const shortAddr = w.wallet_address.slice(0, 8) + "\u2026" + w.wallet_address.slice(-6);
+        const labelHtml = w.label ? `<div class="wc-label">${w.label}</div>` : '';
+        const alreadyLinked = state.wallets.some(sw => sw.wallet_address === w.wallet_address);
+        const card = document.createElement("div");
+        card.className = "wallet-card";
+        card.innerHTML = `
+          ${labelHtml}
+          <div class="wc-address" title="${w.wallet_address}">${shortAddr}</div>
+          <div class="wc-meta">${w.chain} ${w.email ? '<span class="wc-user">' + w.email + '</span>' : ''} ${w.bank_id ? '<span class="wc-user">' + w.bank_id + '</span>' : ''}</div>
+          <div class="wc-actions">
+            ${alreadyLinked
+              ? '<span style="color:var(--wallet-accent, #059669)">✓ linked</span>'
+              : `<button class="wc-link-btn secondary" data-addr="${w.wallet_address}">⬇ Add to Device</button>`
+            }
+          </div>
+        `;
+        container.appendChild(card);
+      }
+      // Wire "Add to Device" buttons
+      container.querySelectorAll(".wc-link-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          await linkWalletToDevice(btn.dataset.addr);
+          onLookupWallets(); // Re-render lookup to update status
+        });
+      });
+    }
+  } catch (error) {
+    setResult(elements.lookupResult, error.message, true);
   }
 }
 
@@ -1277,6 +1346,7 @@ function bindEvents() {
   elements.createWalletBtn.addEventListener("click", onCreateWallet);
   elements.refreshWalletsBtn.addEventListener("click", loadWalletList);
   elements.restoreWalletBtn.addEventListener("click", onRestoreWallet);
+  if (elements.lookupWalletsBtn) elements.lookupWalletsBtn.addEventListener("click", onLookupWallets);
   elements.profileSelect.addEventListener("change", onProfileChange);
   elements.addProfileBtn.addEventListener("click", onAddProfile);
   elements.removeProfileBtn.addEventListener("click", onRemoveProfile);
@@ -1333,7 +1403,7 @@ async function main() {
   if (savedSkin && elements.skinSelect.querySelector(`option[value="${savedSkin}"]`)) {
     elements.skinSelect.value = savedSkin;
   }
-  applySkin(elements.skinSelect.value);
+  await applySkin(elements.skinSelect.value);
 
   // Restore form factor
   const savedForm = localStorage.getItem("kc_wallet_form");

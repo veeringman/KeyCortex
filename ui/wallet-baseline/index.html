@@ -138,6 +138,26 @@
         </div>
 
         <pre id="createResult" class="result"></pre>
+
+        <h3 style="margin-top:18px">Find Wallets by Identity</h3>
+        <p class="panel-hint">Look up existing wallets by email, phone or bank identifier, then add them to this device.</p>
+        <div class="row inline-row">
+          <label for="lookupEmail">Email</label>
+          <input id="lookupEmail" type="email" placeholder="alice@example.com" />
+        </div>
+        <div class="row inline-row">
+          <label for="lookupPhone">Phone</label>
+          <input id="lookupPhone" type="tel" placeholder="+1 555 0100" />
+        </div>
+        <div class="row inline-row">
+          <label for="lookupBankId">Bank</label>
+          <input id="lookupBankId" placeholder="e.g. apna-bank" />
+        </div>
+        <div class="button-row" style="margin-top:10px">
+          <button id="lookupWalletsBtn" class="secondary">🔍 Look Up</button>
+        </div>
+        <div id="lookupResultContainer" class="wallet-list" style="margin-top:8px"></div>
+        <pre id="lookupResult" class="result"></pre>
       </section>
 
       <section id="connect" class="panel">

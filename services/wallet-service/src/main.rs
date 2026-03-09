@@ -17,11 +17,12 @@ use kc_api_types::{
     WalletRenameRequest, WalletRenameResponse, WalletRestoreRequest, WalletRestoreResponse,
     WalletSignRequest, WalletSignResponse, WalletSubmitResponse, WalletSummary, WalletAddress,
     DeviceLinkRequest, DeviceLinkResponse, DeviceUnlinkRequest, DeviceUnlinkResponse,
+    WalletLookupRequest, WalletLookupResponse,
 };
 use kc_chain_client::ChainAdapter;
 use kc_chain_flowcortex::{FLOWCORTEX_L1, FlowCortexAdapter};
 use kc_crypto::{Ed25519Signer, Signer, decrypt_key_material, encrypt_key_material};
-use kc_storage::{Keystore, RocksDbKeystore};
+use kc_storage::{Keystore, RocksDbKeystore, WalletIdentity};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::env;
@@ -742,6 +743,16 @@ async fn wallet_create(
         }
     }
 
+    // Save identity links (email / phone / bank_id)
+    let identity = WalletIdentity {
+        email: body.email.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+        phone: body.phone.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+        bank_id: body.bank_id.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+    };
+    if identity.email.is_some() || identity.phone.is_some() || identity.bank_id.is_some() {
+        let _ = state.keystore.save_wallet_identity(&wallet_address, &identity);
+    }
+
     Ok(Json(WalletCreateResponse {
         wallet_address,
         public_key,
@@ -827,6 +838,8 @@ async fn wallet_list(
             _ => None,
         };
 
+        let ident = state.keystore.load_wallet_identity(addr).ok().flatten();
+
         wallets.push(WalletSummary {
             wallet_address: addr.clone(),
             chain: FLOWCORTEX_L1.to_owned(),
@@ -834,6 +847,9 @@ async fn wallet_list(
             public_key: pub_key,
             label: state.keystore.load_wallet_label(addr).ok().flatten(),
             device_id: state.keystore.load_wallet_device(addr).ok().flatten(),
+            email: ident.as_ref().and_then(|i| i.email.clone()),
+            phone: ident.as_ref().and_then(|i| i.phone.clone()),
+            bank_id: ident.and_then(|i| i.bank_id),
         });
     }
 
@@ -895,6 +911,16 @@ async fn wallet_restore(
         }
     }
 
+    // Save/update identity links (email / phone / bank_id)
+    let identity = WalletIdentity {
+        email: request.email.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+        phone: request.phone.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+        bank_id: request.bank_id.as_deref().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned()),
+    };
+    if identity.email.is_some() || identity.phone.is_some() || identity.bank_id.is_some() {
+        let _ = state.keystore.save_wallet_identity(&wallet_address, &identity);
+    }
+
     let label = state.keystore.load_wallet_label(&wallet_address).ok().flatten();
 
     Ok(Json(WalletRestoreResponse {
@@ -904,6 +930,103 @@ async fn wallet_restore(
         label,
         already_existed,
     }))
+}
+
+/// POST /wallet/lookup — Find wallets by email, phone, or bank_id.
+async fn wallet_lookup(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WalletLookupRequest>,
+) -> ApiResult<WalletLookupResponse> {
+    let mut addresses = Vec::new();
+    let mut matched_by = String::new();
+
+    // Search by email
+    if let Some(ref email) = body.email {
+        if !email.trim().is_empty() {
+            if let Ok(addrs) = state.keystore.list_wallets_by_email(email.trim()) {
+                for a in addrs {
+                    if !addresses.contains(&a) { addresses.push(a); }
+                }
+            }
+            if matched_by.is_empty() { matched_by = "email".to_owned(); }
+        }
+    }
+    // Search by phone
+    if let Some(ref phone) = body.phone {
+        if !phone.trim().is_empty() {
+            if let Ok(addrs) = state.keystore.list_wallets_by_phone(phone.trim()) {
+                for a in addrs {
+                    if !addresses.contains(&a) { addresses.push(a); }
+                }
+            }
+            if matched_by.is_empty() { matched_by = "phone".to_owned(); }
+            else { matched_by.push_str("+phone"); }
+        }
+    }
+    // Search by bank_id
+    if let Some(ref bank_id) = body.bank_id {
+        if !bank_id.trim().is_empty() {
+            if let Ok(addrs) = state.keystore.list_wallets_by_bank_id(bank_id.trim()) {
+                for a in addrs {
+                    if !addresses.contains(&a) { addresses.push(a); }
+                }
+            }
+            if matched_by.is_empty() { matched_by = "bank_id".to_owned(); }
+            else { matched_by.push_str("+bank_id"); }
+        }
+    }
+
+    // Also search device-contact for email/phone (fallback to legacy contact_info index)
+    let contact = body.email.as_deref().or(body.phone.as_deref());
+    if let Some(ci) = contact {
+        if !ci.trim().is_empty() {
+            if let Ok(devices) = state.keystore.list_devices_by_contact(ci.trim()) {
+                for did in &devices {
+                    if let Ok(dw) = state.keystore.list_device_wallets(did) {
+                        for a in dw {
+                            if !addresses.contains(&a) { addresses.push(a); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    addresses.sort();
+    if matched_by.is_empty() { matched_by = "none".to_owned(); }
+
+    // Build summaries
+    let mut wallets = Vec::with_capacity(addresses.len());
+    for addr in &addresses {
+        let binding = state.keystore.load_wallet_binding(addr).ok().flatten();
+        let pub_key = match state.keystore.load_encrypted_key(addr).await {
+            Ok(Some(encrypted)) => {
+                match decrypt_key_material(&encrypted, state.encryption_key.as_ref()) {
+                    Ok(secret_bytes) => {
+                        let signer = Ed25519Signer::from_secret_key_bytes(secret_bytes);
+                        Some(signer.public_key_hex())
+                    }
+                    Err(_) => None,
+                }
+            }
+            _ => None,
+        };
+        let ident = state.keystore.load_wallet_identity(addr).ok().flatten();
+        wallets.push(WalletSummary {
+            wallet_address: addr.clone(),
+            chain: FLOWCORTEX_L1.to_owned(),
+            bound_user_id: binding.map(|b| b.user_id),
+            public_key: pub_key,
+            label: state.keystore.load_wallet_label(addr).ok().flatten(),
+            device_id: state.keystore.load_wallet_device(addr).ok().flatten(),
+            email: ident.as_ref().and_then(|i| i.email.clone()),
+            phone: ident.as_ref().and_then(|i| i.phone.clone()),
+            bank_id: ident.and_then(|i| i.bank_id),
+        });
+    }
+
+    let total = wallets.len();
+    Ok(Json(WalletLookupResponse { wallets, total, matched_by }))
 }
 
 async fn wallet_device_link(
@@ -1162,6 +1285,7 @@ fn build_app(state: AppState) -> Router {
         .route("/wallet/create", post(wallet_create))
         .route("/wallet/list", get(wallet_list))
         .route("/wallet/restore", post(wallet_restore))
+        .route("/wallet/lookup", post(wallet_lookup))
         .route("/wallet/rename", post(wallet_rename))
         .route("/wallet/device-link", post(wallet_device_link))
         .route("/wallet/device-unlink", post(wallet_device_unlink))

@@ -28,10 +28,20 @@ pub fn set_theme_vars(els: &Elements, tokens: &state::ThemeTokens, skin: &str) {
     let style = root.style();
 
     // --wallet-skin: url('path') — the background pattern image
+    // When served from the WASM dist root, asset paths from themes.json
+    // (e.g. "assets/leather-pattern.svg") must be prefixed with
+    // "wallet-baseline/" so they resolve correctly from the document root.
     if !tokens.background_pattern.is_empty() {
+        let pattern_path = if tokens.background_pattern.starts_with("http")
+            || tokens.background_pattern.starts_with('/')
+        {
+            tokens.background_pattern.clone()
+        } else {
+            format!("wallet-baseline/{}", tokens.background_pattern)
+        };
         let _ = style.set_property(
             "--wallet-skin",
-            &format!("url('{}')", tokens.background_pattern),
+            &format!("url('{}')", pattern_path),
         );
     }
     let _ = style.set_property("--wallet-skin-size", "12px 12px");

@@ -68,6 +68,17 @@ pub struct WalletBindingRecord {
     pub last_verified_epoch_ms: u128,
 }
 
+/// Identity fields linked to a wallet (email, phone, bank_id).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WalletIdentity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEventRecord {
     pub event_id: String,
@@ -161,6 +172,20 @@ impl RocksDbKeystore {
         format!("device-wallet:{device_id}:")
     }
 
+    // ── Identity index keys ───────────────────────────────────
+    fn key_for_wallet_identity(wallet_address: &str) -> String {
+        format!("wallet-identity:{wallet_address}")
+    }
+    fn key_for_email_wallet(email: &str, wallet_address: &str) -> String {
+        format!("email-wallet:{}:{wallet_address}", email.trim().to_lowercase())
+    }
+    fn key_for_phone_wallet(phone: &str, wallet_address: &str) -> String {
+        format!("phone-wallet:{}:{wallet_address}", phone.trim())
+    }
+    fn key_for_bank_wallet(bank_id: &str, wallet_address: &str) -> String {
+        format!("bank-wallet:{}:{wallet_address}", bank_id.trim())
+    }
+
     /// Link a wallet to a device and record the reverse mapping.
     pub fn save_device_wallet(&self, device_id: &str, wallet_address: &str) -> Result<()> {
         let key = Self::key_for_device_wallet(device_id, wallet_address);
@@ -244,6 +269,98 @@ impl RocksDbKeystore {
             }
         }
         Ok(device_ids)
+    }
+
+    // ── Wallet identity (email / phone / bank_id) ─────────────
+
+    /// Save identity fields for a wallet and update reverse-lookup indices.
+    pub fn save_wallet_identity(&self, wallet_address: &str, identity: &WalletIdentity) -> Result<()> {
+        // Remove old indices first
+        if let Ok(Some(old)) = self.load_wallet_identity(wallet_address) {
+            if let Some(ref e) = old.email {
+                let k = Self::key_for_email_wallet(e, wallet_address);
+                let _ = self.db.delete(k.as_bytes());
+            }
+            if let Some(ref p) = old.phone {
+                let k = Self::key_for_phone_wallet(p, wallet_address);
+                let _ = self.db.delete(k.as_bytes());
+            }
+            if let Some(ref b) = old.bank_id {
+                let k = Self::key_for_bank_wallet(b, wallet_address);
+                let _ = self.db.delete(k.as_bytes());
+            }
+        }
+        // Save identity blob
+        let key = Self::key_for_wallet_identity(wallet_address);
+        let value = serde_json::to_vec(identity)?;
+        self.db.put(key.as_bytes(), value)?;
+        // Write reverse indices
+        if let Some(ref e) = identity.email {
+            if !e.trim().is_empty() {
+                let k = Self::key_for_email_wallet(e, wallet_address);
+                self.db.put(k.as_bytes(), b"1")?;
+            }
+        }
+        if let Some(ref p) = identity.phone {
+            if !p.trim().is_empty() {
+                let k = Self::key_for_phone_wallet(p, wallet_address);
+                self.db.put(k.as_bytes(), b"1")?;
+            }
+        }
+        if let Some(ref b) = identity.bank_id {
+            if !b.trim().is_empty() {
+                let k = Self::key_for_bank_wallet(b, wallet_address);
+                self.db.put(k.as_bytes(), b"1")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Load identity fields for a wallet.
+    pub fn load_wallet_identity(&self, wallet_address: &str) -> Result<Option<WalletIdentity>> {
+        let key = Self::key_for_wallet_identity(wallet_address);
+        let value = self.db.get(key.as_bytes())?;
+        match value {
+            Some(raw) => Ok(Some(serde_json::from_slice::<WalletIdentity>(&raw)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Find all wallet addresses linked to an email.
+    pub fn list_wallets_by_email(&self, email: &str) -> Result<Vec<String>> {
+        let prefix = format!("email-wallet:{}:", email.trim().to_lowercase());
+        self.scan_prefix_addresses(&prefix)
+    }
+
+    /// Find all wallet addresses linked to a phone number.
+    pub fn list_wallets_by_phone(&self, phone: &str) -> Result<Vec<String>> {
+        let prefix = format!("phone-wallet:{}:", phone.trim());
+        self.scan_prefix_addresses(&prefix)
+    }
+
+    /// Find all wallet addresses linked to a bank_id.
+    pub fn list_wallets_by_bank_id(&self, bank_id: &str) -> Result<Vec<String>> {
+        let prefix = format!("bank-wallet:{}:", bank_id.trim());
+        self.scan_prefix_addresses(&prefix)
+    }
+
+    /// Scan RocksDB for keys with a given prefix and extract the trailing address segment.
+    fn scan_prefix_addresses(&self, prefix: &str) -> Result<Vec<String>> {
+        let prefix_bytes = prefix.as_bytes();
+        let mut addresses = Vec::new();
+        for entry in self.db.iterator(IteratorMode::Start) {
+            let (key, _) = entry?;
+            if key.as_ref().starts_with(prefix_bytes) {
+                if let Ok(k) = std::str::from_utf8(&key) {
+                    if let Some(addr) = k.strip_prefix(prefix) {
+                        addresses.push(addr.to_owned());
+                    }
+                }
+            }
+        }
+        addresses.sort();
+        addresses.dedup();
+        Ok(addresses)
     }
 
     pub fn save_wallet_label(&self, wallet_address: &str, label: &str) -> Result<()> {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KeyCortex Wallet UI (WASM)</title>
     
-    <link rel="stylesheet" href="wallet-baseline/styles.css?v=20" />
+    <link rel="stylesheet" href="wallet-baseline/styles.css?v=21" />
   <link rel="modulepreload" href="/wallet-wasm-7794aa38fa65da91.js" crossorigin="anonymous" integrity="sha384-KWIx7L17NaWf2Rj0//Pl2SwdwrFMUFjcpdNSno9DoSGRBt8HCGhOpUxqyktzaxkg"><link rel="preload" href="/wallet-wasm-7794aa38fa65da91_bg.wasm" crossorigin="anonymous" integrity="sha384-7hF1iQHHcax7+adOFbuKfr/6efDhdKeyiCiD4dlGuYYcXwUMfryedbavbNYiwmEJ" as="fetch" type="application/wasm"></head>
   <body>
     <div class="wallet-centerer">
@@ -138,6 +138,26 @@
           <p class="form-hint" id="restoreHint" style="display:none"></p>
         </div>
         <pre id="createResult" class="result"></pre>
+
+        <h3 style="margin-top:18px">Find Wallets by Identity</h3>
+        <p class="panel-hint">Look up existing wallets by email, phone or bank identifier, then add them to this device.</p>
+        <div class="row inline-row">
+          <label for="lookupEmail">Email</label>
+          <input id="lookupEmail" type="email" placeholder="alice@example.com" />
+        </div>
+        <div class="row inline-row">
+          <label for="lookupPhone">Phone</label>
+          <input id="lookupPhone" type="tel" placeholder="+1 555 0100" />
+        </div>
+        <div class="row inline-row">
+          <label for="lookupBankId">Bank</label>
+          <input id="lookupBankId" placeholder="e.g. apna-bank" />
+        </div>
+        <div class="button-row" style="margin-top:10px">
+          <button id="lookupWalletsBtn" class="secondary">🔍 Look Up</button>
+        </div>
+        <div id="lookupResultContainer" class="wallet-list" style="margin-top:8px"></div>
+        <pre id="lookupResult" class="result"></pre>
       </section>
 
       <section id="connect" class="panel">
@@ -304,6 +324,16 @@
       </section>
       </div>
       </div>
+
+      <!-- ── Custom Modal Dialog (replaces native prompt/confirm/alert) ── -->
+      <div id="kcModal" class="kc-modal-overlay" hidden>
+        <div class="kc-modal">
+          <button class="kc-modal-close" id="kcModalClose" aria-label="Close">&times;</button>
+          <div class="kc-modal-body" id="kcModalBody"></div>
+          <div class="kc-modal-actions" id="kcModalActions"></div>
+        </div>
+      </div>
+
       </main>
     </div>
 
